@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #15803d #1f2937;
+    /* green thumb, gray track */
+}
+
+button,
+a {
+    cursor: pointer;
+}
+
+/* WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1f2937;
+    /* Tailwind gray-800 */
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #15803d;
+    /* Tailwind green-700 */
+    border-radius: 4px;
+    border: 1px solid #0f172a;
+    /* Optional border for contrast */
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #22c55e;
+    /* Tailwind green-500 */
+}
