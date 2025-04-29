@@ -13,7 +13,7 @@ declare global {
 	}
 	interface ProfileInfo {
 		pubkey: string;
-		name?: string;
+		nip05?: string;
 	}
 }
 

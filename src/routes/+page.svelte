@@ -30,6 +30,11 @@
 		pool = new SimplePool();
 		connectToRelay();
 
+		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
+		if (currentNostrPublicKey) {
+			nostrPublicKey = currentNostrPublicKey;
+		}
+
 		const rawMessages = localStorage.getItem('messages');
 		if (rawMessages) {
 			try {
@@ -37,6 +42,16 @@
 				messages = new Map(Object.entries(parsed));
 			} catch (e) {
 				console.error('Failed to parse messages:', e);
+			}
+		}
+
+		const rawMetadata = localStorage.getItem('metadata');
+		if (rawMetadata) {
+			try {
+				const parsed = JSON.parse(rawMetadata) as Record<string, ProfileInfo>;
+				metadata = new Map(Object.entries(parsed));
+			} catch (e) {
+				console.error('Failed to parse metadata:', e);
 			}
 		}
 
@@ -48,13 +63,24 @@
 				console.error('Failed to parse channels:', e);
 			}
 		}
+
+		const currentSelectedChannel = localStorage.getItem('selectedChannel');
+		if (currentSelectedChannel) {
+			selectedChannel = currentSelectedChannel;
+		}
 	});
 
 	$effect(() => {
 		if (!browser) return;
 		const serialized = JSON.stringify(Object.fromEntries(messages));
 		localStorage.setItem('messages', serialized);
+
+		const serializedMetadata = JSON.stringify(Object.fromEntries(metadata));
+		localStorage.setItem('metadata', serializedMetadata);
+
 		localStorage.setItem('channels', JSON.stringify(channels));
+		localStorage.setItem('selectedChannel', selectedChannel);
+		localStorage.setItem('nostrPublicKey', nostrPublicKey);
 	});
 
 	async function login() {
@@ -136,7 +162,7 @@
 
 					const profile: ProfileInfo = {
 						pubkey: pubkey,
-						name: (content as { nip05?: string }).nip05 || event.pubkey
+						nip05: (content as { nip05?: string }).nip05 || event.pubkey
 					};
 					// Update the metadata map
 					const current = metadata.get(pubkey) ?? null;
@@ -198,18 +224,16 @@
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
-		//send event to relay kind 23333
 		// remove "/" from selectedChannel
 		const event: EventTemplate = {
-			kind: 23333,
+			kind: CHAT_KIND,
 			tags: [['d', selectedChannel.replace('/', '')]],
 			content: input,
 			created_at: Math.floor(Date.now() / 1000)
 		};
 
 		window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-			//console.log('Signed event:', signedEvent);
-			await Promise.any(pool.publish(['wss://relay.damus.io'], signedEvent));
+			await Promise.any(pool.publish([RELAY_URL], signedEvent));
 		});
 
 		input = '';
@@ -285,17 +309,17 @@
 					&#9776; <!-- Hamburger Icon -->
 				</button>
 				<span>
-					{selectedChannel} | Connected to
-					<span class="text-blue-300">{RELAY_URL}</span>
+					{selectedChannel} |
+					<span class="text-purple-300">{RELAY_URL}</span>
 					{#if !nostrPublicKey}
 						|
 						<button class="ml-1 text-red-500 hover:underline" onclick={login}>
 							(Login with Extension)
 						</button>
 					{:else}
-						| Pubkey:
-						<span class="text-orange-300">
-							{truncateMiddle(nostrPublicKey, 32)}
+						|
+						<span class="text-blue-300">
+							({nostrPublicKey.slice(0, 12)}) {metadata.get(nostrPublicKey)?.nip05}
 						</span>
 					{/if}
 				</span>
@@ -314,11 +338,11 @@
 					<div class="break-words break-all whitespace-pre-wrap">
 						{#if event.pubkey === nostrPublicKey}
 							<span class="text-blue-300"
-								>[ {metadata.get(event.pubkey)?.name || event.pubkey.slice(0, 12)} ]</span
+								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
 							>
 						{:else}
 							<span class="text-gray-500"
-								>[ {metadata.get(event.pubkey)?.name || event.pubkey.slice(0, 12)} ]</span
+								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
 							>
 						{/if}
 						<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
