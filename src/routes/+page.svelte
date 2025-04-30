@@ -157,7 +157,15 @@
 
 		try {
 			const domain = nip05.split('@')[1];
-			const response = await fetch(`https://${domain}/.well-known/nostr.json`);
+			const response = await fetch(
+				`https://${domain}/.well-known/nostr.json?name=${nip05.split('@')[0]}`,
+				{
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json'
+					}
+				}
+			);
 			if (response.ok) {
 				const data = await response.json();
 				if (data.names) {
