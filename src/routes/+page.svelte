@@ -262,17 +262,15 @@
 </script>
 
 <!-- Main Layout -->
-<div class="flex h-screen bg-gray-900 font-mono text-green-400">
+<div class="flex h-screen bg-gray-900 font-mono text-cyan-400">
 	<!-- Sidebar -->
 	{#if showSidebar}
-		<div class="flex w-48 flex-col border-r border-green-700 bg-gray-800">
+		<div class="flex w-48 flex-col border-r border-cyan-700 bg-gray-800">
 			<!-- <div class="p-3 border-b border-green-700 text-sm font-bold">Channels</div> -->
-			<div
-				class="flex items-center justify-between border-b border-green-700 p-3 text-sm font-bold"
-			>
+			<div class="flex items-center justify-between border-b border-cyan-700 p-3 text-sm font-bold">
 				<span>Channels</span>
 				<button
-					class="text-lg leading-none font-bold text-green-400 hover:text-green-200"
+					class="text-lg leading-none font-bold text-cyan-400 hover:text-cyan-200"
 					onclick={addNewChannel}
 					title="Add Channel"
 				>
@@ -282,9 +280,9 @@
 			<div class="flex-1 overflow-y-auto text-sm">
 				{#each channels as channel}
 					<div
-						class="cursor-pointer px-2 py-1 hover:bg-green-700 hover:text-black {channel ===
+						class="cursor-pointer px-2 py-1 hover:bg-cyan-700 hover:text-black {channel ===
 						selectedChannel
-							? 'bg-green-700 text-black'
+							? 'bg-cyan-700 text-black'
 							: ''}"
 						onclick={() => selectChannel(channel)}
 					>
@@ -298,12 +296,10 @@
 	<!-- Chat Area -->
 	<div class="flex flex-1 flex-col break-words whitespace-pre-wrap">
 		<!-- Header -->
-		<div
-			class="flex items-center justify-between border-b border-green-700 bg-gray-800 p-2 text-sm"
-		>
+		<div class="flex items-center justify-between border-b border-cyan-700 bg-gray-800 p-2 text-sm">
 			<div class="flex items-center gap-2">
 				<button
-					class="text-lg text-green-400 hover:text-green-200 focus:outline-none"
+					class="text-lg text-cyan-400 hover:text-cyan-200 focus:outline-none"
 					onclick={toggleSidebar}
 				>
 					&#9776; <!-- Hamburger Icon -->
@@ -318,7 +314,7 @@
 						</button>
 					{:else}
 						|
-						<span class="text-blue-300">
+						<span class="text-cyan-300">
 							({nostrPublicKey.slice(0, 12)}) {metadata.get(nostrPublicKey)?.nip05}
 						</span>
 					{/if}
@@ -337,7 +333,7 @@
 				{#each messages.get(selectedChannel) ?? [] as event}
 					<div class="break-words break-all whitespace-pre-wrap">
 						{#if event.pubkey === nostrPublicKey}
-							<span class="text-blue-300"
+							<span class="text-cyan-300"
 								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
 							>
 						{:else}
@@ -346,7 +342,7 @@
 							>
 						{/if}
 						<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-						{@html linkify(event.content)}
+						<span class="text-white">{@html linkify(event.content)}</span>
 					</div>
 				{/each}
 			{:else}
@@ -355,18 +351,18 @@
 		</div>
 
 		<!-- Input Bar -->
-		<form class="flex border-t border-green-700 bg-gray-800 p-2" onsubmit={sendMessage}>
+		<form class="flex border-t border-cyan-700 bg-gray-800 p-2" onsubmit={sendMessage}>
 			<input
 				type="text"
 				bind:this={inputEl}
 				bind:value={input}
 				placeholder="Type a message..."
-				class="flex-1 border-none bg-gray-900 px-2 text-green-400 focus:outline-none"
+				class="flex-1 border-none bg-gray-900 px-2 text-cyan-400 focus:outline-none"
 				autocomplete="off"
 			/>
 			<button
 				type="submit"
-				class="ml-2 bg-green-600 px-3 py-1 font-bold text-black hover:bg-green-700"
+				class="ml-2 bg-cyan-600 px-3 py-1 font-bold text-black hover:bg-cyan-700"
 			>
 				Send
 			</button>
