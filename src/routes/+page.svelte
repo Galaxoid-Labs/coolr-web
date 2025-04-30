@@ -14,19 +14,28 @@
 
 	let selectedChannel = $state('/');
 	let showSidebar = $state(true);
+	let autoScroll = $state(true);
 
 	let input = $state('');
 	let inputEl = $state({} as HTMLInputElement);
 	let chatContainer: HTMLDivElement;
-	let autoScroll = true;
 
-	const RELAY_URL = 'wss://relay.damus.io';
-	const METADAT_RELAY_URL = 'wss://purplepag.es';
+	let relayUrl = $state('wss://relay.damus.io');
+	const METADATA_RELAY_URL = 'wss://purplepag.es';
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
 	let pool: SimplePool;
 
 	onMount(() => {
 		if (!browser) return;
+
+		// load stored relay URL
+		const storedRelayUrl = localStorage.getItem('relayUrl');
+		if (storedRelayUrl) {
+			relayUrl = storedRelayUrl;
+		} else {
+			localStorage.setItem('relayUrl', 'wss://relay.damus.io');
+		}
+
 		pool = new SimplePool();
 		connectToRelay();
 
@@ -68,10 +77,19 @@
 		if (currentSelectedChannel) {
 			selectedChannel = currentSelectedChannel;
 		}
+
+		setTimeout(() => {
+			if ((messages.get(selectedChannel) ?? []).length > 0) {
+				scrollToBottom();
+			}
+		}, 0); // Wait for DOM to update
 	});
 
 	$effect(() => {
 		if (!browser) return;
+
+		localStorage.setItem('relayUrl', relayUrl);
+
 		const serialized = JSON.stringify(Object.fromEntries(messages));
 		localStorage.setItem('messages', serialized);
 
@@ -81,6 +99,15 @@
 		localStorage.setItem('channels', JSON.stringify(channels));
 		localStorage.setItem('selectedChannel', selectedChannel);
 		localStorage.setItem('nostrPublicKey', nostrPublicKey);
+
+		if (autoScroll && messages.size > 0) {
+			if ((messages.get(selectedChannel) ?? []).length > 0) {
+				scrollToBottom();
+			}
+			setTimeout(() => {
+				inputEl?.focus();
+			}, 0);
+		}
 	});
 
 	async function login() {
@@ -101,7 +128,7 @@
 		if (!browser) return;
 		if (!pool) return;
 		pool.subscribe(
-			[RELAY_URL],
+			[relayUrl],
 			{
 				kinds: [CHAT_KIND],
 				limit: 1
@@ -141,7 +168,7 @@
 		//console.log('Subscribing to metadata for pubkeys:', pubkeys);
 
 		pool.subscribe(
-			[METADAT_RELAY_URL],
+			[METADATA_RELAY_URL, relayUrl],
 			{
 				kinds: [0],
 				authors: pubkeys
@@ -233,7 +260,7 @@
 		};
 
 		window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-			await Promise.any(pool.publish([RELAY_URL], signedEvent));
+			await Promise.any(pool.publish([relayUrl], signedEvent));
 		});
 
 		input = '';
@@ -259,6 +286,24 @@
 			chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < threshold;
 		autoScroll = atBottom;
 	}
+
+	function changeRelayUrl() {
+		const newRelayUrl = prompt('Enter new relay URL:', relayUrl);
+		if (newRelayUrl) {
+			// clear messages and channels
+			messages = new Map();
+			channels = ['/'];
+			selectedChannel = '/';
+
+			// disconnect and reconnect to the new relay
+			pool.close([relayUrl]);
+
+			relayUrl = newRelayUrl;
+
+			console.log('Relay URL updated to:', relayUrl);
+			connectToRelay();
+		}
+	}
 </script>
 
 <!-- Main Layout -->
@@ -279,8 +324,10 @@
 			</div>
 			<div class="flex-1 overflow-y-auto text-sm">
 				{#each channels as channel}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div
-						class="cursor-pointer px-2 py-1 hover:bg-cyan-700 hover:text-black {channel ===
+						class="cursor-pointer px-2 py-1 text-cyan-100 hover:bg-cyan-700 hover:text-black {channel ===
 						selectedChannel
 							? 'bg-cyan-700 text-black'
 							: ''}"
@@ -305,8 +352,12 @@
 					&#9776; <!-- Hamburger Icon -->
 				</button>
 				<span>
-					{selectedChannel} |
-					<span class="text-purple-300">{RELAY_URL}</span>
+					<span class="text-cyan-100"> {selectedChannel} </span> |
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<span class="cursor-pointer text-purple-300 hover:underline" onclick={changeRelayUrl}
+						>{relayUrl}</span
+					>
 					{#if !nostrPublicKey}
 						|
 						<button class="ml-1 text-red-500 hover:underline" onclick={login}>
@@ -342,7 +393,7 @@
 							>
 						{/if}
 						<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-						<span class="text-white">{@html linkify(event.content)}</span>
+						<span class="text-cyan-100">{@html linkify(event.content)}</span>
 					</div>
 				{/each}
 			{:else}
@@ -357,7 +408,7 @@
 				bind:this={inputEl}
 				bind:value={input}
 				placeholder="Type a message..."
-				class="flex-1 border-none bg-gray-900 px-2 text-cyan-400 focus:outline-none"
+				class="flex-1 border-none bg-gray-900 px-2 text-cyan-100 focus:outline-none"
 				autocomplete="off"
 			/>
 			<button
