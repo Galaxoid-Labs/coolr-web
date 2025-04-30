@@ -226,20 +226,44 @@
 					}
 					if (!content) return;
 
-					const profile: ProfileInfo = {
-						pubkey: pubkey,
-						nip05: (content as { nip05?: string }).nip05 || event.pubkey
-					};
-					// Update the metadata map
-					const current = metadata.get(pubkey) ?? null;
-					if (current) {
-						metadata.set(pubkey, { ...current, ...profile });
+					// Check if nip05 is verified
+					const nip05 = (content as { nip05?: string }).nip05;
+					if (nip05) {
+						verifyNip05(nip05, pubkey).then((verified) => {
+							const profile: ProfileInfo = {
+								pubkey: pubkey,
+								nip05: nip05,
+								verified: verified
+							};
+							// Update the metadata map
+							const current = metadata.get(pubkey) ?? null;
+							if (current) {
+								metadata.set(pubkey, { ...current, ...profile });
+							} else {
+								metadata.set(pubkey, profile);
+							}
+							// Trigger reactivity by replacing the Map
+							const newMap = new Map(metadata);
+							metadata = newMap;
+						});
 					} else {
-						metadata.set(pubkey, profile);
+						// If nip05 is not present, set verified to false
+						const profile: ProfileInfo = {
+							pubkey: pubkey,
+							nip05: event.pubkey,
+							verified: false
+						};
+						// Update the metadata map
+						const current = metadata.get(pubkey) ?? null;
+						if (current) {
+							metadata.set(pubkey, { ...current, ...profile });
+						} else {
+							metadata.set(pubkey, profile);
+						}
+						// Trigger reactivity by replacing the Map
+						const newMap = new Map(metadata);
+						metadata = newMap;
 					}
-					// Trigger reactivity by replacing the Map
-					const newMap = new Map(metadata);
-					metadata = newMap;
 				}
 			}
 		);
@@ -429,24 +453,52 @@
 				{#each messages.get(selectedChannel) ?? [] as event}
 					<div class="break-words break-all whitespace-pre-wrap">
 						{#if event.pubkey === nostrPublicKey}
-							<span
-								class="cursor-pointer text-cyan-300 hover:underline"
-								onclick={() => openPubkeyProfile(event.pubkey)}
-								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
-							>
+							{#if metadata.get(event.pubkey)?.verified}
+								<span
+									class="cursor-pointer text-cyan-300 hover:underline"
+									onclick={() => openPubkeyProfile(event.pubkey)}
+									>[ <strong
+										>{metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)}</strong
+									>
+									] [
+									<span class="text-green-300">✓</span> ]</span
+								>
+							{:else}
+								<span
+									class="cursor-pointer text-cyan-300 hover:underline"
+									onclick={() => openPubkeyProfile(event.pubkey)}
+									>[ <strong
+										>{metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)}</strong
+									>
+									] [
+									<span class="text-gray-300">-</span> ]</span
+								>
+							{/if}
+							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
+							<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
 						{:else}
-							<span
-								class="cursor-pointer text-gray-500 hover:underline"
-								onclick={() => openPubkeyProfile(event.pubkey)}
-								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
-							>
+							{#if metadata.get(event.pubkey)?.verified}
+								<span
+									class="cursor-pointer text-cyan-600 hover:underline"
+									onclick={() => openPubkeyProfile(event.pubkey)}
+									>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ] [
+									<span class="text-green-300">✓</span> ]</span
+								>
+							{:else}
+								<span
+									class="cursor-pointer text-cyan-600 hover:underline"
+									onclick={() => openPubkeyProfile(event.pubkey)}
+									>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ] [
+									<span class="text-gray-300">-</span> ]</span
+								>
+							{/if}
+							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
+							<span class="text-gray-300">{@html linkify(event.content)}</span>
 						{/if}
-						<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-						<span class="text-cyan-100">{@html linkify(event.content)}</span>
 					</div>
 				{/each}
 			{:else}
-				<div class="text-gray-500">No messages yet...</div>
+				<div class="text-cyan-50">No messages yet...</div>
 			{/if}
 		</div>
 
