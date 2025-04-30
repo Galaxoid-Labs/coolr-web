@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { formatDate, linkify } from '$lib';
+	import { formatDate, linkify, validChannelName } from '$lib';
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
-	import { nprofileEncode, type NProfile } from 'nostr-tools/nip19';
+	import { nprofileEncode } from 'nostr-tools/nip19';
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, Event[]>>(new Map());
-	let channels = $state(['/']); // default channel
+	let channels = $state(['#']); // default channel
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
+	let verified = $state<string[]>([]);
 
-	let selectedChannel = $state('/');
+	let selectedChannel = $state('#');
 	let showSidebar = $state(true);
 	let autoScroll = $state(true);
 
@@ -28,6 +29,13 @@
 
 	onMount(() => {
 		if (!browser) return;
+
+		// Need to setup versioning so I can clear localStorage if needed.
+		const version = localStorage.getItem('version');
+		if (version !== '2') {
+			localStorage.clear();
+			localStorage.setItem('version', '2');
+		}
 
 		// load stored relay URL
 		const storedRelayUrl = localStorage.getItem('relayUrl');
@@ -65,6 +73,16 @@
 			}
 		}
 
+		const rawVerified = localStorage.getItem('verified');
+		if (rawVerified) {
+			try {
+				const parsed = JSON.parse(rawVerified) as string[];
+				verified = parsed;
+			} catch (e) {
+				console.error('Failed to parse verified:', e);
+			}
+		}
+
 		const rawChannels = localStorage.getItem('channels');
 		if (rawChannels) {
 			try {
@@ -82,6 +100,7 @@
 		setTimeout(() => {
 			if ((messages.get(selectedChannel) ?? []).length > 0) {
 				scrollToBottom();
+				subscribeMetadata();
 			}
 		}, 0); // Wait for DOM to update
 	});
@@ -96,6 +115,9 @@
 
 		const serializedMetadata = JSON.stringify(Object.fromEntries(metadata));
 		localStorage.setItem('metadata', serializedMetadata);
+
+		const serializedVerified = JSON.stringify(verified);
+		localStorage.setItem('verified', serializedVerified);
 
 		localStorage.setItem('channels', JSON.stringify(channels));
 		localStorage.setItem('selectedChannel', selectedChannel);
@@ -126,31 +148,28 @@
 		}
 	}
 
-	// create async function to verify nip05
-	async function verifyNip05(nip05: string, pubkey: string): Promise<boolean> {
-		// verify by sending request to nip05 server
-		// like this
-		// https://galaxoidlabs.com/.well-known/nostr.json
-		// where the domain is after the @ in nip05
-		const domain = nip05.split('@')[1];
-		const response = await fetch(`https://${domain}/.well-known/nostr.json`);
-		if (response.ok) {
-			const data = await response.json();
-			if (data.names) {
-				const name = nip05.split('@')[0];
-				const pubkeyFromName = data.names[name];
-				if (pubkeyFromName === pubkey) {
-					return true;
-				} else {
-					console.error('NIP-05 verification failed: pubkey does not match');
-					return false;
+	async function verifyNip05(nip05: string, pubkey: string) {
+		if (!browser) return;
+		if (nip05.includes('bitcoinbarks.com')) {
+			// TODO: Temporary since CORS issue with bitcoinbarks.com
+			return;
+		}
+
+		try {
+			const domain = nip05.split('@')[1];
+			const response = await fetch(`https://${domain}/.well-known/nostr.json`);
+			if (response.ok) {
+				const data = await response.json();
+				if (data.names) {
+					const name = nip05.split('@')[0];
+					const pubkeyFromName = data.names[name];
+					if (pubkeyFromName === pubkey && !verified.includes(pubkey)) {
+						verified.push(pubkey);
+					}
 				}
-			} else {
-				return false;
 			}
-		} else {
-			console.error('NIP-05 verification failed: response not ok');
-			return false;
+		} catch (error) {
+			console.log('Error verifying NIP-05:', error);
 		}
 	}
 
@@ -168,11 +187,13 @@
 					event.created_at = Math.floor(Date.now() / 1000); // Doing this since event created_at not really reliable
 
 					const channelTag = event.tags.find((tag) => tag[0] === 'd');
-					let channel = channelTag ? channelTag[1] : '/';
-					channel = '/' + channel; // ensure it starts with a slash
+					if (validChannelName(channelTag?.[1] ?? '')) {
+						let channel = channelTag ? channelTag[1] : '';
+						channel = '#' + channel; // ensure it starts with a slash
 
-					addMessageToChannel(channel, event);
-					subscribeMetadata();
+						addMessageToChannel(channel, event);
+						subscribeMetadata();
+					}
 				},
 				onclose(reasons: string[]) {
 					console.log('Connection closed:', reasons);
@@ -195,7 +216,6 @@
 			.flat()
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
-		//console.log('Subscribing to metadata for pubkeys:', pubkeys);
 
 		// lets add current nostr pubkey to the list
 		if (nostrPublicKey && !pubkeys.includes(nostrPublicKey)) {
@@ -226,43 +246,26 @@
 					}
 					if (!content) return;
 
-					// Check if nip05 is verified
 					const nip05 = (content as { nip05?: string }).nip05;
+					let profile: ProfileInfo = {
+						pubkey: pubkey
+					};
+
 					if (nip05) {
-						verifyNip05(nip05, pubkey).then((verified) => {
-							const profile: ProfileInfo = {
-								pubkey: pubkey,
-								nip05: nip05,
-								verified: verified
-							};
-							// Update the metadata map
-							const current = metadata.get(pubkey) ?? null;
-							if (current) {
-								metadata.set(pubkey, { ...current, ...profile });
-							} else {
-								metadata.set(pubkey, profile);
-							}
-							// Trigger reactivity by replacing the Map
-							const newMap = new Map(metadata);
-							metadata = newMap;
-						});
-					} else {
-						// If nip05 is not present, set verified to false
-						const profile: ProfileInfo = {
-							pubkey: pubkey,
-							nip05: event.pubkey,
-							verified: false
-						};
-						// Update the metadata map
+						profile.nip05 = nip05;
 						const current = metadata.get(pubkey) ?? null;
 						if (current) {
 							metadata.set(pubkey, { ...current, ...profile });
 						} else {
 							metadata.set(pubkey, profile);
 						}
-						// Trigger reactivity by replacing the Map
+
 						const newMap = new Map(metadata);
 						metadata = newMap;
+
+						if (!verified.includes(pubkey)) {
+							verifyNip05(nip05, pubkey);
+						}
 					}
 				}
 			}
@@ -293,16 +296,24 @@
 	}
 
 	function addNewChannel() {
-		const name = prompt('Enter a new channel name (no slashes):');
+		const name = prompt('Enter a new channel name (no # only letters and numbers):');
 		if (!name) return;
 
-		const clean = name
-			.trim()
-			.replace(/\s+/g, '-') // Replace spaces with dashes
-			.replaceAll('/', '') // Remove any slashes
-			.toLowerCase();
+		// const clean = name
+		// 	.trim()
+		// 	.replace(/\s+/g, '') // Replace spaces with dashes
+		// 	.replaceAll('/', '') // Remove any slashes
+		// 	.replaceAll('#', '') // Remove any hashes
+		// 	.toLowerCase();
 
-		const channel = '/' + clean;
+		if (!validChannelName(name)) {
+			alert(
+				'Invalid channel name. Please use only alphanumeric characters. And 12 characters max.'
+			);
+			return;
+		}
+
+		const channel = '#' + name;
 
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
@@ -314,10 +325,15 @@
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
-		// remove "/" from selectedChannel
+		// remove "#" from selectedChannel
+		let channel = selectedChannel.replace('#', '');
+		let tag: string[][] = [];
+		if (channel !== '' && validChannelName(channel)) {
+			tag = [['d', channel]];
+		}
 		const event: EventTemplate = {
 			kind: CHAT_KIND,
-			tags: [['d', selectedChannel.replace('/', '')]],
+			tags: tag,
 			content: input,
 			created_at: Math.floor(Date.now() / 1000)
 		};
@@ -362,8 +378,8 @@
 		if (newRelayUrl) {
 			// clear messages and channels
 			messages = new Map();
-			channels = ['/'];
-			selectedChannel = '/';
+			channels = ['#'];
+			selectedChannel = '#';
 
 			// disconnect and reconnect to the new relay
 			pool.close([relayUrl]);
@@ -453,7 +469,7 @@
 				{#each messages.get(selectedChannel) ?? [] as event}
 					<div class="break-words break-all whitespace-pre-wrap">
 						{#if event.pubkey === nostrPublicKey}
-							{#if metadata.get(event.pubkey)?.verified}
+							{#if verified.includes(event.pubkey)}
 								<span
 									class="cursor-pointer text-cyan-300 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}
@@ -477,7 +493,7 @@
 							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
 							<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
 						{:else}
-							{#if metadata.get(event.pubkey)?.verified}
+							{#if verified.includes(event.pubkey)}
 								<span
 									class="cursor-pointer text-cyan-600 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}

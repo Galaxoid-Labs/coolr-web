@@ -14,7 +14,6 @@ declare global {
 	interface ProfileInfo {
 		pubkey: string;
 		nip05?: string;
-		verified: boolean;
 	}
 }
 
