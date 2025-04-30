@@ -160,10 +160,10 @@
 			const response = await fetch(
 				`https://${domain}/.well-known/nostr.json?name=${nip05.split('@')[0]}`,
 				{
-					method: 'GET',
-					headers: {
-						'Content-Type': 'application/json'
-					}
+					method: 'GET'
+					// headers: {
+					// 	'Content-Type': 'application/json'
+					// }
 				}
 			);
 			if (response.ok) {
