@@ -351,7 +351,7 @@
 		</div>
 
 		<!-- Input Bar -->
-		<form class="flex border-t border-cyan-700 bg-gray-800 p-2" onsubmit={sendMessage}>
+		<form class="flex border-t border-cyan-700 p-2" onsubmit={sendMessage}>
 			<input
 				type="text"
 				bind:this={inputEl}
@@ -362,7 +362,7 @@
 			/>
 			<button
 				type="submit"
-				class="ml-2 bg-cyan-600 px-3 py-1 font-bold text-black hover:bg-cyan-700"
+				class="ml-2 rounded bg-cyan-600 px-3 py-1 font-bold text-black hover:bg-cyan-700"
 			>
 				Send
 			</button>
