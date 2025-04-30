@@ -115,6 +115,7 @@
 		if (window.nostr) {
 			try {
 				nostrPublicKey = await window.nostr.getPublicKey();
+				subscribeMetadata();
 				console.log('Logged in with Nostr public key:', nostrPublicKey);
 			} catch (error) {
 				console.error('Error logging in with Nostr:', error);
@@ -166,6 +167,11 @@
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
 		//console.log('Subscribing to metadata for pubkeys:', pubkeys);
+
+		// lets add current nostr pubkey to the list
+		if (nostrPublicKey && !pubkeys.includes(nostrPublicKey)) {
+			pubkeys.push(nostrPublicKey);
+		}
 
 		pool.subscribe(
 			[METADATA_RELAY_URL, relayUrl],
