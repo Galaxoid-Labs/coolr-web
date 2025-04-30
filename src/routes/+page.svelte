@@ -5,6 +5,7 @@
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
+	import { nprofileEncode, type NProfile } from 'nostr-tools/nip19';
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, Event[]>>(new Map());
@@ -125,6 +126,34 @@
 		}
 	}
 
+	// create async function to verify nip05
+	async function verifyNip05(nip05: string, pubkey: string): Promise<boolean> {
+		// verify by sending request to nip05 server
+		// like this
+		// https://galaxoidlabs.com/.well-known/nostr.json
+		// where the domain is after the @ in nip05
+		const domain = nip05.split('@')[1];
+		const response = await fetch(`https://${domain}/.well-known/nostr.json`);
+		if (response.ok) {
+			const data = await response.json();
+			if (data.names) {
+				const name = nip05.split('@')[0];
+				const pubkeyFromName = data.names[name];
+				if (pubkeyFromName === pubkey) {
+					return true;
+				} else {
+					console.error('NIP-05 verification failed: pubkey does not match');
+					return false;
+				}
+			} else {
+				return false;
+			}
+		} else {
+			console.error('NIP-05 verification failed: response not ok');
+			return false;
+		}
+	}
+
 	function connectToRelay() {
 		if (!browser) return;
 		if (!pool) return;
@@ -172,6 +201,10 @@
 		if (nostrPublicKey && !pubkeys.includes(nostrPublicKey)) {
 			pubkeys.push(nostrPublicKey);
 		}
+
+		// check if new pubkeys are in metadata map
+		const newPubkeys = pubkeys.filter((pubkey) => !metadata.has(pubkey));
+		if (newPubkeys.length === 0) return; // No new pubkeys to subscribe to
 
 		pool.subscribe(
 			[METADATA_RELAY_URL, relayUrl],
@@ -272,6 +305,13 @@
 		input = '';
 	}
 
+	function openPubkeyProfile(pubkey: string) {
+		if (!browser) return;
+		const nprofile = nprofileEncode({ pubkey });
+		const url = `https://nosta.me/${nprofile}`;
+		window.open(url, '_blank');
+	}
+
 	function toggleSidebar() {
 		showSidebar = !showSidebar;
 	}
@@ -313,6 +353,8 @@
 </script>
 
 <!-- Main Layout -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="flex h-screen bg-gray-900 font-mono text-cyan-400">
 	<!-- Sidebar -->
 	{#if showSidebar}
@@ -330,8 +372,6 @@
 			</div>
 			<div class="flex-1 overflow-y-auto text-sm">
 				{#each channels as channel}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<div
 						class="cursor-pointer px-2 py-1 text-cyan-100 hover:bg-cyan-700 hover:text-black {channel ===
 						selectedChannel
@@ -359,8 +399,6 @@
 				</button>
 				<span>
 					<span class="text-cyan-100"> {selectedChannel} </span> |
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<span class="cursor-pointer text-purple-300 hover:underline" onclick={changeRelayUrl}
 						>{relayUrl}</span
 					>
@@ -386,15 +424,20 @@
 			onscroll={handleScroll}
 		>
 			<!-- Display messages for the selected channel -->
+
 			{#if messages.has(selectedChannel)}
 				{#each messages.get(selectedChannel) ?? [] as event}
 					<div class="break-words break-all whitespace-pre-wrap">
 						{#if event.pubkey === nostrPublicKey}
-							<span class="text-cyan-300"
+							<span
+								class="cursor-pointer text-cyan-300 hover:underline"
+								onclick={() => openPubkeyProfile(event.pubkey)}
 								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
 							>
 						{:else}
-							<span class="text-gray-500"
+							<span
+								class="cursor-pointer text-gray-500 hover:underline"
+								onclick={() => openPubkeyProfile(event.pubkey)}
 								>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ]</span
 							>
 						{/if}
