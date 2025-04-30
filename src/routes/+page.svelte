@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { truncateMiddle, formatDate, linkify } from '$lib';
+	import { formatDate, linkify } from '$lib';
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
