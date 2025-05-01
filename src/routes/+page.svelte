@@ -150,10 +150,10 @@
 
 	async function verifyNip05(nip05: string, pubkey: string) {
 		if (!browser) return;
-		// if (nip05.includes('bitcoinbarks.com')) {
-		// 	// TODO: Temporary since CORS issue with bitcoinbarks.com
-		// 	return;
-		// }
+		if (nip05.includes('bitcoinbarks.com')) {
+			// TODO: Temporary since CORS issue with bitcoinbarks.com
+			return;
+		}
 
 		try {
 			const domain = nip05.split('@')[1];
@@ -332,11 +332,26 @@
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
+		// find @mentions in input
+		const mentions = input.match(/@([a-zA-Z0-9_]+)/g);
+		if (mentions) {
+			mentions.forEach((mention) => {
+				const cleanMention = mention.replace('@', '');
+				const profile = Array.from(metadata.values()).find((p) => p.name === cleanMention);
+				if (profile) {
+					input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
+				}
+			});
+		}
+
 		// remove "#" from selectedChannel
 		let channel = selectedChannel.replace('#', '');
 		let tag: string[][] = [];
 		if (channel !== '' && validChannelName(channel)) {
-			tag = [['d', channel]];
+			tag = [
+				['d', channel],
+				['relay', relayUrl]
+			];
 		}
 		const event: EventTemplate = {
 			kind: CHAT_KIND,
