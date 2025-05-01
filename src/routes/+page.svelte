@@ -5,16 +5,16 @@
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
-	import { nprofileEncode } from 'nostr-tools/nip19';
+	import { nprofileEncode, npubEncode } from 'nostr-tools/nip19';
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, Event[]>>(new Map());
-	let channels = $state(['#']); // default channel
+	let channels = $state(['#_']); // default channel
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
 	let verified = $state<string[]>([]);
 
-	let selectedChannel = $state('#');
+	let selectedChannel = $state('#_');
 	let showSidebar = $state(true);
 	let autoScroll = $state(true);
 
@@ -32,9 +32,9 @@
 
 		// Need to setup versioning so I can clear localStorage if needed.
 		const version = localStorage.getItem('version');
-		if (version !== '2') {
+		if (version !== '3') {
 			localStorage.clear();
-			localStorage.setItem('version', '2');
+			localStorage.setItem('version', '3');
 		}
 
 		// load stored relay URL
@@ -150,10 +150,10 @@
 
 	async function verifyNip05(nip05: string, pubkey: string) {
 		if (!browser) return;
-		if (nip05.includes('bitcoinbarks.com')) {
-			// TODO: Temporary since CORS issue with bitcoinbarks.com
-			return;
-		}
+		// if (nip05.includes('bitcoinbarks.com')) {
+		// 	// TODO: Temporary since CORS issue with bitcoinbarks.com
+		// 	return;
+		// }
 
 		try {
 			const domain = nip05.split('@')[1];
@@ -197,7 +197,7 @@
 					const channelTag = event.tags.find((tag) => tag[0] === 'd');
 					if (validChannelName(channelTag?.[1] ?? '')) {
 						let channel = channelTag ? channelTag[1] : '';
-						channel = '#' + channel; // ensure it starts with a slash
+						channel = '#' + channel; // ensure it starts with a #
 
 						addMessageToChannel(channel, event);
 						subscribeMetadata();
@@ -256,7 +256,8 @@
 
 					const nip05 = (content as { nip05?: string }).nip05;
 					let profile: ProfileInfo = {
-						pubkey: pubkey
+						pubkey: pubkey,
+						name: (content as { name?: string }).name
 					};
 
 					if (nip05) {
@@ -386,8 +387,8 @@
 		if (newRelayUrl) {
 			// clear messages and channels
 			messages = new Map();
-			channels = ['#'];
-			selectedChannel = '#';
+			channels = ['#_'];
+			selectedChannel = '#_';
 
 			// disconnect and reconnect to the new relay
 			pool.close([relayUrl]);
@@ -428,6 +429,7 @@
 						onclick={() => selectChannel(channel)}
 					>
 						{channel}
+						<!-- {#if channel === '#_'}(main){/if} -->
 					</div>
 				{/each}
 			</div>
@@ -458,7 +460,7 @@
 					{:else}
 						|
 						<span class="text-cyan-300">
-							({nostrPublicKey.slice(0, 12)}) {metadata.get(nostrPublicKey)?.nip05}
+							({npubEncode(nostrPublicKey).slice(0, 12)}) {metadata.get(nostrPublicKey)?.nip05}
 						</span>
 					{/if}
 				</span>
@@ -479,23 +481,26 @@
 						{#if event.pubkey === nostrPublicKey}
 							{#if verified.includes(event.pubkey)}
 								<span
+									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
 									class="cursor-pointer text-cyan-300 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}
 									>[ <strong
-										>{metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)}</strong
+										>{metadata.get(event.pubkey)?.name ||
+											npubEncode(event.pubkey).slice(0, 12)}</strong
 									>
 									] [
 									<span class="text-green-300">✓</span> ]</span
 								>
 							{:else}
 								<span
+									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
 									class="cursor-pointer text-cyan-300 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}
 									>[ <strong
-										>{metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)}</strong
+										>{metadata.get(event.pubkey)?.name ||
+											npubEncode(event.pubkey).slice(0, 12)}</strong
 									>
-									] [
-									<span class="text-gray-300">-</span> ]</span
+									]</span
 								>
 							{/if}
 							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
@@ -503,21 +508,22 @@
 						{:else}
 							{#if verified.includes(event.pubkey)}
 								<span
+									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
 									class="cursor-pointer text-cyan-600 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ] [
+									>[ {metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12)} ] [
 									<span class="text-green-300">✓</span> ]</span
 								>
 							{:else}
 								<span
+									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
 									class="cursor-pointer text-cyan-600 hover:underline"
 									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ {metadata.get(event.pubkey)?.nip05 || event.pubkey.slice(0, 12)} ] [
-									<span class="text-gray-300">-</span> ]</span
+									>[ {metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12)} ]</span
 								>
 							{/if}
 							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-							<span class="text-gray-300">{@html linkify(event.content)}</span>
+							<span class="text-gray-400">{@html linkify(event.content)}</span>
 						{/if}
 					</div>
 				{/each}

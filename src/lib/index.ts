@@ -25,7 +25,7 @@ export function formatDate(timestamp: number): string {
 
 export function validChannelName(name: string): boolean {
     const regex = /^[a-zA-Z0-9]{1,12}$/;
-    if (name.length === 0) return true; // Default channel
-    //if (name.length === 1 && name === '_') return true; // Allow single underscore for default channel
+    //if (name.length === 0) return true; // Default channel
+    if (name.length === 1 && name === '_') return true; // Allow single underscore for default channel
     return regex.test(name);
 }
