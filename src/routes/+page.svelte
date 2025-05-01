@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { formatDate, linkify, validChannelName } from '$lib';
+	import { formatDate, validChannelName } from '$lib';
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
-	import { nprofileEncode, npubEncode } from 'nostr-tools/nip19';
+	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, Event[]>>(new Map());
@@ -316,9 +316,7 @@
 		// 	.toLowerCase();
 
 		if (!validChannelName(name)) {
-			alert(
-				'Invalid channel name. Please use only alphanumeric characters. And 12 characters max.'
-			);
+			alert('Invalid channel name. No special characters. And 24 characters max.');
 			return;
 		}
 
@@ -359,6 +357,40 @@
 		const nprofile = nprofileEncode({ pubkey });
 		const url = `https://nosta.me/${nprofile}`;
 		window.open(url, '_blank');
+	}
+
+	export function linkify(text: string): string {
+		const urlRegex = /((https?:\/\/[^\s]+))/g;
+
+		let linked = text.replace(
+			urlRegex,
+			'<a class="hover:underline text-white" href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+		);
+
+		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
+		const nprofileMatch = text.match(nprofileRegex);
+
+		if (!nprofileMatch) return linked;
+
+		for (const match of nprofileMatch) {
+			const dec = decodeNostrURI(match);
+
+			if (!dec) continue;
+			if (dec.type !== 'nprofile') continue;
+			const pubkey = dec.data.pubkey;
+
+			const profile = metadata.get(pubkey);
+			if (!profile) continue;
+			const name = profile.name;
+			if (!name) continue;
+
+			linked = linked.replace(
+				match,
+				`<span class="text-purple-300 hover:underline">@${name}</span>`
+			);
+		}
+
+		return linked;
 	}
 
 	function toggleSidebar() {
