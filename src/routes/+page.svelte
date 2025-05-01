@@ -364,7 +364,7 @@
 
 		let linked = text.replace(
 			urlRegex,
-			'<a class="hover:underline text-white" href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+			'<a class="hover:underline text-blue-400" href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
 		);
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
