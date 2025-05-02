@@ -19,3 +19,4 @@ export function validChannelName(name: string): boolean {
     if (name.length === 1 && name === '_') return true; // Allow single underscore for default channel
     return regex.test(name);
 }
+

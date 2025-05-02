@@ -2,10 +2,12 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { formatDate, validChannelName } from '$lib';
+	import { page } from '$app/stores';
 
 	import { SimplePool } from 'nostr-tools/pool';
 	import type { Event, EventTemplate } from 'nostr-tools';
 	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
+	import Message from '$lib/components/Message.svelte';
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, Event[]>>(new Map());
@@ -27,26 +29,102 @@
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
 	let pool: SimplePool;
 
+	function handlePath() {
+		if (!browser) return;
+		const params = $page.url.searchParams;
+		const newRelay = params.get('relay') || relayUrl;
+		const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+		// if (newRelay !== relayUrl) {
+		// 	relayUrl = newRelay;
+		// 	pool.close([relayUrl]);
+		// 	connectToRelay();
+		// }
+
+		if (newChannel !== selectedChannel) {
+			changeChannel(newChannel);
+		}
+	}
+
+	function notify(title: string, body: string) {
+		if (Notification.permission === 'granted') {
+			new Notification(title, { body, icon: '/favicon-32x32.png' });
+		} else if (Notification.permission !== 'denied') {
+			Notification.requestPermission().then((perm) => {
+				if (perm === 'granted') {
+					new Notification(title, { body, icon: '/favicon-32x32.png' });
+				}
+			});
+		}
+	}
+
 	onMount(() => {
 		if (!browser) return;
 
-		// Need to setup versioning so I can clear localStorage if needed.
+		loadCache();
+
+		pool = new SimplePool();
+		connectToRelay();
+
+		setTimeout(() => {
+			if ((messages.get(selectedChannel) ?? []).length > 0) {
+				scrollToBottom();
+				subscribeMetadata();
+			}
+		}, 0); // Wait for DOM to update
+	});
+
+	$effect(() => {
+		if (!browser) return;
+
+		// const params = $page.url.searchParams;
+		// const newRelay = params.get('relay') || relayUrl;
+		// const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+
+		// // if (newRelay !== relayUrl) {
+		// // 	relayUrl = newRelay;
+		// // 	pool.close([relayUrl]);
+		// // 	connectToRelay();
+		// // }
+
+		// if (newChannel !== selectedChannel) {
+		// 	changeChannel(newChannel);
+		// }
+
+		// // Only trigger if something changed
+		// if (newRelay !== relayUrl || newChannel !== selectedChannel) {
+		// 	//newRelay = newRelay;
+		// 	//selectedChannel = newChannel;
+		// 	console.log('Relay changed to:', newRelay);
+		// 	console.log('Channel changed to:', newChannel);
+		// 	//handleRelayChannelChange(relay, channel);
+		// }
+
+		saveCache();
+
+		if (autoScroll && messages.size > 0) {
+			if ((messages.get(selectedChannel) ?? []).length > 0) {
+				scrollToBottom();
+			}
+			setTimeout(() => {
+				inputEl?.focus();
+			}, 0);
+		}
+	});
+
+	function loadCache() {
+		if (!browser) return;
 		const version = localStorage.getItem('version');
 		if (version !== '3') {
 			localStorage.clear();
 			localStorage.setItem('version', '3');
 		}
 
-		// load stored relay URL
 		const storedRelayUrl = localStorage.getItem('relayUrl');
 		if (storedRelayUrl) {
 			relayUrl = storedRelayUrl;
 		} else {
 			localStorage.setItem('relayUrl', 'wss://relay.damus.io');
 		}
-
-		pool = new SimplePool();
-		connectToRelay();
 
 		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
 		if (currentNostrPublicKey) {
@@ -96,18 +174,10 @@
 		if (currentSelectedChannel) {
 			selectedChannel = currentSelectedChannel;
 		}
+	}
 
-		setTimeout(() => {
-			if ((messages.get(selectedChannel) ?? []).length > 0) {
-				scrollToBottom();
-				subscribeMetadata();
-			}
-		}, 0); // Wait for DOM to update
-	});
-
-	$effect(() => {
+	function saveCache() {
 		if (!browser) return;
-
 		localStorage.setItem('relayUrl', relayUrl);
 
 		const serialized = JSON.stringify(Object.fromEntries(messages));
@@ -122,16 +192,7 @@
 		localStorage.setItem('channels', JSON.stringify(channels));
 		localStorage.setItem('selectedChannel', selectedChannel);
 		localStorage.setItem('nostrPublicKey', nostrPublicKey);
-
-		if (autoScroll && messages.size > 0) {
-			if ((messages.get(selectedChannel) ?? []).length > 0) {
-				scrollToBottom();
-			}
-			setTimeout(() => {
-				inputEl?.focus();
-			}, 0);
-		}
-	});
+	}
 
 	async function login() {
 		if (!browser) return;
@@ -188,7 +249,7 @@
 			[relayUrl],
 			{
 				kinds: [CHAT_KIND],
-				limit: 1
+				limit: 0
 			},
 			{
 				onevent(event: Event) {
@@ -201,6 +262,29 @@
 
 						addMessageToChannel(channel, event);
 						subscribeMetadata();
+
+						// Notify if message is not from current user
+						// Check content for nostr:nprofile...
+						const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
+						const nprofileMatch = event.content.match(nprofileRegex);
+
+						if (nprofileMatch) {
+							for (const match of nprofileMatch) {
+								const dec = decodeNostrURI(match);
+
+								if (!dec) continue;
+								if (dec.type !== 'nprofile') continue;
+								const pubkey = dec.data.pubkey;
+
+								if (pubkey === nostrPublicKey) {
+									const from =
+										metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12);
+									// TODO: Replace nostr:nprofile with @name
+									notify(`${from} mentioned you in ${channel}`, `${event.content}`);
+									break;
+								}
+							}
+						}
 					}
 				},
 				onclose(reasons: string[]) {
@@ -304,6 +388,30 @@
 		messages = newMap;
 	}
 
+	function changeChannel(channel: string) {
+		if (!browser) return;
+		if (channel === selectedChannel) return;
+
+		const cleanse = channel.replaceAll('#', '');
+
+		if (!validChannelName(cleanse)) {
+			alert('Invalid channel name. No special characters. And 24 characters max.');
+			return;
+		}
+
+		channel = '#' + cleanse;
+		selectedChannel = channel;
+		// const params = new URLSearchParams();
+		// params.set('channel', channel);
+		// params.set('relay', relayUrl);
+		// window.history.replaceState({}, '', '?' + params.toString());
+
+		if (!channels.includes(channel)) {
+			channels = [...channels, channel];
+			selectedChannel = channel;
+		}
+	}
+
 	function addNewChannel() {
 		const name = prompt('Enter a new channel name (no # only letters and numbers):');
 		if (!name) return;
@@ -365,6 +473,7 @@
 		});
 
 		input = '';
+		inputEl?.focus();
 	}
 
 	function openPubkeyProfile(pubkey: string) {
@@ -374,12 +483,19 @@
 		window.open(url, '_blank');
 	}
 
-	export function linkify(text: string): string {
+	function linkify(text: string): string {
 		const urlRegex = /((https?:\/\/[^\s]+))/g;
 
 		let linked = text.replace(
 			urlRegex,
 			'<a class="hover:underline text-blue-400" href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+		);
+
+		const hashtagRegex = /(^|\s)(#[\p{L}\p{N}_]+)/gu;
+		linked = linked.replace(
+			hashtagRegex,
+			(match, prefix, hashtag) =>
+				`${prefix}<a class="hover:underline text-orange-400" href="${encodeShareLink(relayUrl, hashtag, false)}">${hashtag}<a>`
 		);
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
@@ -406,6 +522,15 @@
 		}
 
 		return linked;
+	}
+
+	function encodeShareLink(relay: string, channel: string, withBaseUrl: boolean): string {
+		const path = `${channel.replaceAll('#', '')}?relay=${relay}`;
+		if (!withBaseUrl) {
+			return `/${path}`;
+		}
+		const baseUrl = `${$page.url.origin}`;
+		return `${baseUrl}/${path}`;
 	}
 
 	function toggleSidebar() {
@@ -476,7 +601,6 @@
 						onclick={() => selectChannel(channel)}
 					>
 						{channel}
-						<!-- {#if channel === '#_'}(main){/if} -->
 					</div>
 				{/each}
 			</div>
@@ -521,58 +645,16 @@
 			onscroll={handleScroll}
 		>
 			<!-- Display messages for the selected channel -->
-
 			{#if messages.has(selectedChannel)}
 				{#each messages.get(selectedChannel) ?? [] as event}
-					<div class="break-words break-all whitespace-pre-wrap">
-						{#if event.pubkey === nostrPublicKey}
-							{#if verified.includes(event.pubkey)}
-								<span
-									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
-									class="cursor-pointer text-cyan-300 hover:underline"
-									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ <strong
-										>{metadata.get(event.pubkey)?.name ||
-											npubEncode(event.pubkey).slice(0, 12)}</strong
-									>
-									] [
-									<span class="text-green-300">✓</span> ]</span
-								>
-							{:else}
-								<span
-									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
-									class="cursor-pointer text-cyan-300 hover:underline"
-									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ <strong
-										>{metadata.get(event.pubkey)?.name ||
-											npubEncode(event.pubkey).slice(0, 12)}</strong
-									>
-									]</span
-								>
-							{/if}
-							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-							<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
-						{:else}
-							{#if verified.includes(event.pubkey)}
-								<span
-									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
-									class="cursor-pointer text-cyan-600 hover:underline"
-									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ {metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12)} ] [
-									<span class="text-green-300">✓</span> ]</span
-								>
-							{:else}
-								<span
-									title={metadata.get(event.pubkey)?.nip05 || event.pubkey}
-									class="cursor-pointer text-cyan-600 hover:underline"
-									onclick={() => openPubkeyProfile(event.pubkey)}
-									>[ {metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12)} ]</span
-								>
-							{/if}
-							<span class="text-yellow-100"> [ {formatDate(event.created_at)} ]</span>
-							<span class="text-gray-400">{@html linkify(event.content)}</span>
-						{/if}
-					</div>
+					<Message
+						{nostrPublicKey}
+						{event}
+						profileInfo={metadata.get(event.pubkey)}
+						verified={verified.includes(event.pubkey)}
+						{linkify}
+						{openPubkeyProfile}
+					/>
 				{/each}
 			{:else}
 				<div class="text-cyan-50">No messages yet...</div>
