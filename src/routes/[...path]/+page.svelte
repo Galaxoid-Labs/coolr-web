@@ -8,9 +8,10 @@
 	import type { Event, EventTemplate } from 'nostr-tools';
 	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
 	import Message from '$lib/components/Message.svelte';
+	import SystemMessage from '$lib/components/SystemMessage.svelte';
 
 	let nostrPublicKey = $state('');
-	let messages = $state<Map<string, Event[]>>(new Map());
+	let messages = $state<Map<string, (Event | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']); // default channel
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
@@ -21,7 +22,6 @@
 	let autoScroll = $state(true);
 
 	let input = $state('');
-	let inputEl = $state({} as HTMLInputElement);
 	let chatContainer: HTMLDivElement;
 
 	let relayUrl = $state('wss://relay.damus.io');
@@ -77,9 +77,6 @@
 			if ((messages.get(selectedChannel) ?? []).length > 0) {
 				scrollToBottom();
 			}
-			setTimeout(() => {
-				inputEl?.focus();
-			}, 0);
 		}
 	});
 
@@ -306,6 +303,7 @@
 		// get unique pubkeys from messages
 		const pubkeys = Array.from(messages.values())
 			.flat()
+			.filter((msg): msg is Event => 'pubkey' in msg)
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
 
@@ -365,15 +363,17 @@
 		);
 	}
 
-	function addMessageToChannel(channel: string, event: Event) {
+	function addMessageToChannel(channel: string, event: Event | SystemEvent) {
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
 		}
 
 		const current = messages.get(channel) ?? [];
 
-		if (current.some((msg) => msg.id === event.id)) {
-			return; // Ignore duplicate messages
+		if ('pubkey' in event) {
+			if (current.some((msg): msg is Event => 'id' in msg && msg.id === event.id)) {
+				return; // Ignore duplicate messages
+			}
 		}
 
 		const updated = [...current, event];
@@ -412,9 +412,15 @@
 		}
 	}
 
-	function addNewChannel() {
-		const name = prompt('Enter a new channel name (no # only letters and numbers):');
+	function addNewChannel(name: string | null = null) {
+		if (!name) {
+			name = prompt('Enter a new channel name (no # only letters and numbers):');
+		} else {
+			name = name.replaceAll('#', '');
+		}
 		if (!name) return;
+		// const name = prompt('Enter a new channel name (no # only letters and numbers):');
+		// if (!name) return;
 
 		// const clean = name
 		// 	.trim()
@@ -433,67 +439,105 @@
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
 			selectedChannel = channel;
+		} else {
+			selectedChannel = channel;
 		}
 	}
 
-	function sendMessage() {
+	async function sendMessage() {
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
-		// find @mentions in input
-		// Also check for `@name could have spaces`
-		const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
-		let pTags: string[][] = [];
-
-		if (mentions) {
-			mentions.forEach((mention) => {
-				let cleanMention = '';
-
-				if (mention.startsWith('`@')) {
-					// Handle `@name with spaces`
-					cleanMention = mention.slice(2, -1); // remove `@ and ending `
-				} else {
-					// Handle @name
-					cleanMention = mention.slice(1); // remove @
+		// if starts with / then its a command
+		if (input.startsWith('/')) {
+			const command = input.split(' ')[0].slice(1);
+			if (command === 'help') {
+				// simply add SystemMessage to the channel message map
+				const systemEvent: SystemEvent = {
+					type: 'help',
+					content:
+						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/join <channel> - Join or create a channel',
+					created_at: Math.floor(Date.now() / 1000)
+				};
+				addMessageToChannel(selectedChannel, systemEvent);
+			} else if (command === 'csm') {
+				// clear system messages
+				// remove non Event messages from the channel
+				const current = messages.get(selectedChannel) ?? [];
+				const filtered = current.filter((msg) => 'pubkey' in msg);
+				const newMap = new Map(messages);
+				newMap.set(selectedChannel, filtered);
+				messages = newMap;
+			} else if (command === 'join') {
+				if (input.split(' ').length != 2) {
+					alert('Command: /join <channel>');
+					return;
 				}
-
-				const profile = Array.from(metadata.values()).find((p) => p.name === cleanMention);
-
-				if (profile) {
-					input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
-					pTags.push(['p', profile.pubkey]);
+				// join a channel
+				const channel = input.split(' ')[1];
+				if (!channel) {
+					alert('Please provide a channel name.');
+					return;
 				}
+				addNewChannel(channel);
+			} else {
+				alert(`Unknown command: ${command}`);
+			}
+		} else {
+			// find @mentions in input
+			// Also check for `@name could have spaces`
+			const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
+			let pTags: string[][] = [];
+
+			if (mentions) {
+				mentions.forEach((mention) => {
+					let cleanMention = '';
+
+					if (mention.startsWith('`@')) {
+						// Handle `@name with spaces`
+						cleanMention = mention.slice(2, -1); // remove `@ and ending `
+					} else {
+						// Handle @name
+						cleanMention = mention.slice(1); // remove @
+					}
+
+					const profile = Array.from(metadata.values()).find((p) => p.name === cleanMention);
+
+					if (profile) {
+						input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
+						pTags.push(['p', profile.pubkey]);
+					}
+				});
+			}
+
+			// filtre out duplicate ptags
+			pTags = pTags.filter((value, index, self) => self.indexOf(value) === index);
+
+			// remove "#" from selectedChannel
+			let channel = selectedChannel.replace('#', '');
+			let tag: string[][] = [];
+			if (channel !== '' && validChannelName(channel)) {
+				tag = [
+					['d', channel],
+					['relay', relayUrl]
+				];
+				if (pTags.length > 0) {
+					tag = [...tag, ...pTags];
+				}
+			}
+			const event: EventTemplate = {
+				kind: CHAT_KIND,
+				tags: tag,
+				content: input,
+				created_at: Math.floor(Date.now() / 1000)
+			};
+
+			window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
+				await Promise.any(pool.publish([relayUrl], signedEvent));
 			});
 		}
 
-		// filtre out duplicate ptags
-		pTags = pTags.filter((value, index, self) => self.indexOf(value) === index);
-
-		// remove "#" from selectedChannel
-		let channel = selectedChannel.replace('#', '');
-		let tag: string[][] = [];
-		if (channel !== '' && validChannelName(channel)) {
-			tag = [
-				['d', channel],
-				['relay', relayUrl]
-			];
-			if (pTags.length > 0) {
-				tag = [...tag, ...pTags];
-			}
-		}
-		const event: EventTemplate = {
-			kind: CHAT_KIND,
-			tags: tag,
-			content: input,
-			created_at: Math.floor(Date.now() / 1000)
-		};
-
-		window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-			await Promise.any(pool.publish([relayUrl], signedEvent));
-		});
-
 		input = '';
-		inputEl?.focus();
 	}
 
 	function openPubkeyProfile(pubkey: string) {
@@ -605,7 +649,7 @@
 				<span>Channels</span>
 				<button
 					class="text-lg leading-none font-bold text-cyan-400 hover:text-cyan-200"
-					onclick={addNewChannel}
+					onclick={() => addNewChannel()}
 					title="Add Channel"
 				>
 					+
@@ -667,14 +711,18 @@
 			<!-- Display messages for the selected channel -->
 			{#if messages.has(selectedChannel)}
 				{#each messages.get(selectedChannel) ?? [] as event}
-					<Message
-						{nostrPublicKey}
-						{event}
-						profileInfo={metadata.get(event.pubkey)}
-						verified={verified.includes(event.pubkey)}
-						{linkify}
-						{openPubkeyProfile}
-					/>
+					{#if 'pubkey' in event}
+						<Message
+							{nostrPublicKey}
+							{event}
+							profileInfo={metadata.get(event.pubkey)}
+							verified={verified.includes(event.pubkey)}
+							{linkify}
+							{openPubkeyProfile}
+						/>
+					{:else if 'type' in event}
+						<SystemMessage {event} {linkify} />
+					{/if}
 				{/each}
 			{:else}
 				<div class="text-cyan-50">No messages yet...</div>
@@ -683,9 +731,10 @@
 
 		<!-- Input Bar -->
 		<form class="flex border-t border-cyan-700 p-2" onsubmit={sendMessage}>
+			<!-- svelte-ignore a11y_autofocus -->
 			<input
+				autofocus
 				type="text"
-				bind:this={inputEl}
 				bind:value={input}
 				placeholder="Type a message..."
 				class="flex-1 border-none bg-gray-900 px-2 text-cyan-100 focus:outline-none"

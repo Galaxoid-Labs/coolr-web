@@ -16,6 +16,11 @@ declare global {
 		nip05?: string;
 		name?: string;
 	}
+	interface SystemEvent {
+		type: 'error' | 'info' | 'help';
+		created_at: number;
+		content: string;
+	}
 }
 
 export { };
