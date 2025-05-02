@@ -443,6 +443,7 @@
 		// find @mentions in input
 		// Also check for `@name could have spaces`
 		const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
+		let pTags: string[][] = [];
 
 		if (mentions) {
 			mentions.forEach((mention) => {
@@ -460,9 +461,13 @@
 
 				if (profile) {
 					input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
+					pTags.push(['p', profile.pubkey]);
 				}
 			});
 		}
+
+		// filtre out duplicate ptags
+		pTags = pTags.filter((value, index, self) => self.indexOf(value) === index);
 
 		// remove "#" from selectedChannel
 		let channel = selectedChannel.replace('#', '');
@@ -472,6 +477,9 @@
 				['d', channel],
 				['relay', relayUrl]
 			];
+			if (pTags.length > 0) {
+				tag = [...tag, ...pTags];
+			}
 		}
 		const event: EventTemplate = {
 			kind: CHAT_KIND,
