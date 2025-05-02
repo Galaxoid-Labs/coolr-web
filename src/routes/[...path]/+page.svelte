@@ -29,34 +29,6 @@
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
 	let pool: SimplePool;
 
-	function handlePath() {
-		if (!browser) return;
-		const params = $page.url.searchParams;
-		const newRelay = params.get('relay') || relayUrl;
-		const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
-		// if (newRelay !== relayUrl) {
-		// 	relayUrl = newRelay;
-		// 	pool.close([relayUrl]);
-		// 	connectToRelay();
-		// }
-
-		if (newChannel !== selectedChannel) {
-			changeChannel(newChannel);
-		}
-	}
-
-	function notify(title: string, body: string) {
-		if (Notification.permission === 'granted') {
-			new Notification(title, { body, icon: '/favicon-32x32.png' });
-		} else if (Notification.permission !== 'denied') {
-			Notification.requestPermission().then((perm) => {
-				if (perm === 'granted') {
-					new Notification(title, { body, icon: '/favicon-32x32.png' });
-				}
-			});
-		}
-	}
-
 	onMount(() => {
 		if (!browser) return;
 
@@ -110,6 +82,34 @@
 			}, 0);
 		}
 	});
+
+	function handlePath() {
+		if (!browser) return;
+		const params = $page.url.searchParams;
+		const newRelay = params.get('relay') || relayUrl;
+		const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+		// if (newRelay !== relayUrl) {
+		// 	relayUrl = newRelay;
+		// 	pool.close([relayUrl]);
+		// 	connectToRelay();
+		// }
+
+		if (newChannel !== selectedChannel) {
+			changeChannel(newChannel);
+		}
+	}
+
+	function notify(title: string, body: string) {
+		if (Notification.permission === 'granted') {
+			new Notification(title, { body, icon: '/favicon-32x32.png' });
+		} else if (Notification.permission !== 'denied') {
+			Notification.requestPermission().then((perm) => {
+				if (perm === 'granted') {
+					new Notification(title, { body, icon: '/favicon-32x32.png' });
+				}
+			});
+		}
+	}
 
 	function loadCache() {
 		if (!browser) return;
@@ -441,11 +441,23 @@
 		if (!window.nostr) return;
 
 		// find @mentions in input
-		const mentions = input.match(/@([a-zA-Z0-9_]+)/g);
+		// Also check for `@name could have spaces`
+		const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
+
 		if (mentions) {
 			mentions.forEach((mention) => {
-				const cleanMention = mention.replace('@', '');
+				let cleanMention = '';
+
+				if (mention.startsWith('`@')) {
+					// Handle `@name with spaces`
+					cleanMention = mention.slice(2, -1); // remove `@ and ending `
+				} else {
+					// Handle @name
+					cleanMention = mention.slice(1); // remove @
+				}
+
 				const profile = Array.from(metadata.values()).find((p) => p.name === cleanMention);
+
 				if (profile) {
 					input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
 				}
