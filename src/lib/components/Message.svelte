@@ -17,43 +17,43 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="break-words break-all whitespace-pre-wrap">
 	{#if event.pubkey === nostrPublicKey}
-		<span class="text-yellow-100 opacity-50"> [ {formatDate(event.created_at)} ]</span>
+		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
 		{#if verified}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-300 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>[ <strong>{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}</strong>
-				] [
-				<span class="text-green-300">✓</span> ]</span
-			>
+				><strong>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt;</strong>
+				<span class="text-green-300">✓</span>
+			</span>
 		{:else}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-300 opacity-30 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>[ <strong>{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}</strong>
-				]</span
+				>&lt;<strong>{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}</strong>
+				&gt;</span
 			>
 		{/if}
 
 		<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
 	{:else}
-		<span class="text-yellow-100 opacity-30"> [ {formatDate(event.created_at)} ]</span>
+		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
 		{#if verified}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-600 opacity-70 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>[ {profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)} ] [
-				<span class="text-green-300">✓</span> ]</span
-			>
+				>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt;
+
+				<span class="text-green-300">✓</span>
+			</span>
 		{:else}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-600 opacity-70 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>[ {profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)} ]</span
+				>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt</span
 			>
 		{/if}
 
