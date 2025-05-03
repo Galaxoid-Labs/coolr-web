@@ -12,7 +12,8 @@
 
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, (Event | SystemEvent)[]>>(new Map());
-	let channels = $state(['#_']); // default channel
+	let channels = $state(['#_']);
+	let unreadChannels = $state(['#coolr']);
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
 	let verified = $state<string[]>([]);
@@ -167,9 +168,18 @@
 			}
 		}
 
+		const rawUnreadChannels = localStorage.getItem('unreadChannels');
+		if (rawUnreadChannels) {
+			try {
+				unreadChannels = JSON.parse(rawUnreadChannels);
+			} catch (e) {
+				console.error('Failed to parse unread channels:', e);
+			}
+		}
+
 		const currentSelectedChannel = localStorage.getItem('selectedChannel');
 		if (currentSelectedChannel) {
-			selectedChannel = currentSelectedChannel;
+			selectChannel(currentSelectedChannel);
 		}
 	}
 
@@ -189,6 +199,7 @@
 		localStorage.setItem('channels', JSON.stringify(channels));
 		localStorage.setItem('selectedChannel', selectedChannel);
 		localStorage.setItem('nostrPublicKey', nostrPublicKey);
+		localStorage.setItem('unreadChannels', JSON.stringify(unreadChannels));
 	}
 
 	async function login() {
@@ -369,6 +380,10 @@
 		}
 
 		const current = messages.get(channel) ?? [];
+		// if message is not in selected channel, add to unreadChannels
+		if (channel !== selectedChannel && !unreadChannels.includes(channel)) {
+			unreadChannels = [...unreadChannels, channel];
+		}
 
 		if ('pubkey' in event) {
 			if (current.some((msg): msg is Event => 'id' in msg && msg.id === event.id)) {
@@ -400,7 +415,7 @@
 		}
 
 		channel = '#' + cleanse;
-		selectedChannel = channel;
+		selectChannel(channel);
 		// const params = new URLSearchParams();
 		// params.set('channel', channel);
 		// params.set('relay', relayUrl);
@@ -408,7 +423,7 @@
 
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
-			selectedChannel = channel;
+			selectChannel(channel);
 		}
 	}
 
@@ -438,9 +453,9 @@
 
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
-			selectedChannel = channel;
+			selectChannel(channel);
 		} else {
-			selectedChannel = channel;
+			selectChannel(channel);
 		}
 	}
 
@@ -642,6 +657,8 @@
 
 	function selectChannel(channel: string) {
 		selectedChannel = channel;
+		// remove channel from unreadChannels
+		unreadChannels = unreadChannels.filter((c) => c !== channel);
 	}
 
 	function scrollToBottom() {
@@ -697,13 +714,21 @@
 			<div class="flex-1 overflow-y-auto text-sm">
 				{#each channels as channel}
 					<div
-						class="cursor-pointer px-2 py-1 text-cyan-100 hover:bg-cyan-700 hover:text-black {channel ===
+						class="cursor-pointer px-2 py-1 hover:bg-cyan-700 hover:text-black {channel ===
 						selectedChannel
 							? 'bg-cyan-700 text-black'
 							: ''}"
 						onclick={() => selectChannel(channel)}
 					>
-						{channel}
+						{#if unreadChannels.includes(channel)}
+							<span class="font-black text-white">
+								{channel} <span class="float-end">●</span>
+							</span>
+						{:else}
+							<span class={channel === selectedChannel ? 'text-white' : 'text-gray-400'}>
+								{channel}
+							</span>
+						{/if}
 					</div>
 				{/each}
 			</div>
