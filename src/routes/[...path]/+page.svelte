@@ -565,24 +565,46 @@
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
 		const nprofileMatch = text.match(nprofileRegex);
 
-		if (!nprofileMatch) return linked;
+		if (nprofileMatch) {
+			for (const match of nprofileMatch) {
+				const dec = decodeNostrURI(match);
 
-		for (const match of nprofileMatch) {
-			const dec = decodeNostrURI(match);
+				if (!dec) continue;
+				if (dec.type !== 'nprofile') continue;
+				const pubkey = dec.data.pubkey;
 
-			if (!dec) continue;
-			if (dec.type !== 'nprofile') continue;
-			const pubkey = dec.data.pubkey;
+				const profile = metadata.get(pubkey);
+				if (!profile) continue;
+				const name = profile.name;
+				if (!name) continue;
 
-			const profile = metadata.get(pubkey);
-			if (!profile) continue;
-			const name = profile.name;
-			if (!name) continue;
+				linked = linked.replace(
+					match,
+					`<span class="text-purple-300 hover:underline">@${name}</span>`
+				);
+			}
+		}
 
-			linked = linked.replace(
-				match,
-				`<span class="text-purple-300 hover:underline">@${name}</span>`
-			);
+		// lets check for npbu1 as well
+		const npubRegext = /^npub1[a-z\d]{58}/g;
+		const npubMatch = text.match(npubRegext);
+		if (npubMatch) {
+			for (const match of npubMatch) {
+				const dec = decodeNostrURI(match);
+
+				if (!dec) continue;
+				if (dec.type !== 'npub') continue;
+				const pubkey = dec.data;
+				const profile = metadata.get(pubkey);
+				if (!profile) continue;
+				const name = profile.name;
+				if (!name) continue;
+
+				linked = linked.replace(
+					match,
+					`<span class="text-purple-300 hover:underline">@${name}</span>`
+				);
+			}
 		}
 
 		return linked;
