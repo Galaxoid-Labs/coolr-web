@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { formatDate, validChannelName } from '$lib';
+	import { formatDate, validChannelName, truncateMiddle } from '$lib';
 	import { page } from '$app/stores';
 
 	import { SimplePool } from 'nostr-tools/pool';
@@ -559,7 +559,7 @@
 		linked = linked.replace(
 			hashtagRegex,
 			(match, prefix, hashtag) =>
-				`${prefix}<a class="hover:underline text-orange-400" href="${encodeShareLink(relayUrl, hashtag, false)}">${hashtag}<a>`
+				`${prefix}<a class="hover:underline text-orange-400" href="${encodeShareLink(relayUrl, hashtag, false)}">${hashtag}</a>`
 		);
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
@@ -586,7 +586,7 @@
 		}
 
 		// lets check for npbu1 as well
-		const npubRegext = /^npub1[a-z\d]{58}/g;
+		const npubRegext = /npub1[a-z\d]{58}/g;
 		const npubMatch = text.match(npubRegext);
 		if (npubMatch) {
 			for (const match of npubMatch) {
@@ -603,6 +603,25 @@
 				linked = linked.replace(
 					match,
 					`<span class="text-purple-300 hover:underline">@${name}</span>`
+				);
+			}
+		}
+
+		// let check for nevent1 and create a link "https://njump.me/nevent1..."
+		const neventRegext = /(nostr:nevent1|nevent1)[a-z\d]+/g;
+		const neventMatch = text.match(neventRegext);
+		if (neventMatch) {
+			for (const match of neventMatch) {
+				const dec = decodeNostrURI(match);
+				const njumpLink = `https://njump.me/${match.replace('nostr:', '')}`;
+
+				if (!dec) continue;
+				if (dec.type !== 'nevent') continue;
+				const eventId = dec.data.id;
+
+				linked = linked.replace(
+					match,
+					`<a class="hover:underline text-orange-400" href="${njumpLink}" target="_blank" rel="noopener noreferrer">${truncateMiddle(njumpLink, 56)}</a>`
 				);
 			}
 		}
