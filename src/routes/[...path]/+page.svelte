@@ -459,6 +459,19 @@
 		}
 	}
 
+	function clearEmptyChannels() {
+		if (!browser) return;
+		const emptyChannels = channels.filter((channel) => {
+			const messagesInChannel = messages.get(channel);
+			return !messagesInChannel || messagesInChannel.length === 0;
+		});
+
+		if (emptyChannels.length > 0) {
+			channels = channels.filter((channel) => !emptyChannels.includes(channel));
+			messages = new Map([...messages].filter(([key]) => !emptyChannels.includes(key)));
+		}
+	}
+
 	async function sendMessage() {
 		if (!input.trim()) return;
 		if (!window.nostr) return;
@@ -471,7 +484,7 @@
 				const systemEvent: SystemEvent = {
 					type: 'help',
 					content:
-						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/join <channel> - Join or create a channel',
+						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel',
 					created_at: Math.floor(Date.now() / 1000)
 				};
 				addMessageToChannel(selectedChannel, systemEvent);
@@ -495,6 +508,8 @@
 					return;
 				}
 				addNewChannel(channel);
+			} else if (command === 'cec') {
+				clearEmptyChannels();
 			} else {
 				alert(`Unknown command: ${command}`);
 			}
