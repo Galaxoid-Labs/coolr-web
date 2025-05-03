@@ -607,7 +607,7 @@
 			}
 		}
 
-		// let check for nevent1 and create a link "https://njump.me/nevent1..."
+		// let check for nevent1 or naddr1 and create a link "https://njump.me/nevent1..."
 		const neventRegext = /(nostr:nevent1|nevent1|nostr:naddr1|naddr1)[a-z\d]+/g;
 		const neventMatch = text.match(neventRegext);
 		if (neventMatch) {
