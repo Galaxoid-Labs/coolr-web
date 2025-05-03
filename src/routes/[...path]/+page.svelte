@@ -621,7 +621,7 @@
 
 				linked = linked.replace(
 					match,
-					`<a class="hover:underline text-orange-400" href="${njumpLink}" target="_blank" rel="noopener noreferrer">${truncateMiddle(njumpLink, 56)}</a>`
+					`<a class="hover:underline text-blue-400" href="${njumpLink}" target="_blank" rel="noopener noreferrer">${truncateMiddle(njumpLink, 56)}</a>`
 				);
 			}
 		}
