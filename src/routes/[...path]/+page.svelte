@@ -608,7 +608,7 @@
 		}
 
 		// let check for nevent1 and create a link "https://njump.me/nevent1..."
-		const neventRegext = /(nostr:nevent1|nevent1)[a-z\d]+/g;
+		const neventRegext = /(nostr:nevent1|nevent1|nostr:naddr1|naddr1)[a-z\d]+/g;
 		const neventMatch = text.match(neventRegext);
 		if (neventMatch) {
 			for (const match of neventMatch) {
@@ -616,8 +616,6 @@
 				const njumpLink = `https://njump.me/${match.replace('nostr:', '')}`;
 
 				if (!dec) continue;
-				if (dec.type !== 'nevent') continue;
-				const eventId = dec.data.id;
 
 				linked = linked.replace(
 					match,
