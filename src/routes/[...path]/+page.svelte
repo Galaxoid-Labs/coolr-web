@@ -88,9 +88,9 @@
 
 		// If any unread channels set document title
 		if (unreadChannels.length > 0) {
-			document.title = `Coolr - (${unreadChannels.length}) ${selectedChannel}`;
+			document.title = `(${unreadChannels.length}) ${selectedChannel}`;
 		} else {
-			document.title = `Color - ${selectedChannel}`;
+			document.title = `${selectedChannel}`;
 		}
 	});
 
