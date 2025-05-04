@@ -10,6 +10,7 @@
 	import Message from '$lib/components/Message.svelte';
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 
+	let tabActive = $state(true);
 	let nostrPublicKey = $state('');
 	let messages = $state<Map<string, (Event | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']);
@@ -30,6 +31,12 @@
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
 	let pool: SimplePool;
 
+	if (browser) {
+		document.addEventListener('visibilitychange', () => {
+			tabActive = document.visibilityState === 'visible';
+		});
+	}
+
 	onMount(() => {
 		if (!browser) return;
 
@@ -46,7 +53,6 @@
 		}, 0); // Wait for DOM to update
 
 		// Used to handle selecting channels from hashtags
-
 		if (typeof window !== 'undefined') {
 			(window as any).changeChannel = changeChannel;
 		}
@@ -54,6 +60,16 @@
 
 	$effect(() => {
 		if (!browser) return;
+
+		if (tabActive) {
+			// If the tab is active and unread selected channel has unread messages, clear unread for channel
+			if (unreadChannels.includes(selectedChannel)) {
+				// use timeout to wait 1 second before clearing unread
+				setTimeout(() => {
+					unreadChannels = unreadChannels.filter((c) => c !== selectedChannel);
+				}, 1000);
+			}
+		}
 
 		// const params = $page.url.searchParams;
 		// const newRelay = params.get('relay') || relayUrl;
@@ -394,8 +410,14 @@
 
 		const current = messages.get(channel) ?? [];
 		// if message is not in selected channel, add to unreadChannels
-		if (channel !== selectedChannel && !unreadChannels.includes(channel)) {
-			unreadChannels = [...unreadChannels, channel];
+		if (channel !== selectedChannel) {
+			if (!unreadChannels.includes(channel)) {
+				unreadChannels = [...unreadChannels, channel];
+			}
+		} else if (channel === selectedChannel && !tabActive) {
+			if (!unreadChannels.includes(channel)) {
+				unreadChannels = [...unreadChannels, channel];
+			}
 		}
 
 		if ('pubkey' in event) {
