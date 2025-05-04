@@ -44,6 +44,12 @@
 				subscribeMetadata();
 			}
 		}, 0); // Wait for DOM to update
+
+		// Used to handle selecting channels from hashtags
+
+		if (typeof window !== 'undefined') {
+			(window as any).changeChannel = changeChannel;
+		}
 	});
 
 	$effect(() => {
@@ -588,8 +594,8 @@
 		const hashtagRegex = /(^|\s)(#[\p{L}\p{N}_]+)/gu;
 		linked = linked.replace(
 			hashtagRegex,
-			(match, prefix, hashtag) =>
-				`${prefix}<a class="hover:underline text-orange-400" href="${encodeShareLink(relayUrl, hashtag, false)}">${hashtag}</a>`
+			(_, prefix, hashtag) =>
+				`${prefix}<span title="Open channel ${hashtag}" class="text-orange-300 hover:underline cursor-pointer" onclick="changeChannel('${hashtag}')">${hashtag}</span>`
 		);
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
