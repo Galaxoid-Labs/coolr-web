@@ -85,6 +85,13 @@
 				scrollToBottom();
 			}
 		}
+
+		// If any unread channels set document title
+		if (unreadChannels.length > 0) {
+			document.title = `Coolr - (${unreadChannels.length}) ${selectedChannel}`;
+		} else {
+			document.title = `Color - ${selectedChannel}`;
+		}
 	});
 
 	function handlePath() {
