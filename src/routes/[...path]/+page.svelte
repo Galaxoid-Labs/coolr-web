@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { formatDate, validChannelName, truncateMiddle } from '$lib';
+	import { validChannelName, truncateMiddle } from '$lib';
 	import { page } from '$app/stores';
 
 	import { SimplePool } from 'nostr-tools/pool';
@@ -25,6 +25,7 @@
 
 	let input = $state('');
 	let chatContainer: HTMLDivElement;
+	let showEmojiPicker = $state(false);
 
 	let relayUrl = $state('wss://relay.damus.io');
 	const METADATA_RELAY_URL = 'wss://purplepag.es';
@@ -604,6 +605,22 @@
 
 		input = '';
 	}
+	function insertEmoji(e: any) {
+		const emoji = e.detail.unicode;
+		const inputEl = document.querySelector('input');
+		const start = inputEl?.selectionStart;
+		const end = inputEl?.selectionEnd;
+		if (start === null || end === null) return;
+		input = input.slice(0, start) + emoji + input.slice(end);
+
+		// timeout then set focus
+		setTimeout(() => {
+			inputEl?.focus();
+			inputEl?.setSelectionRange(start + emoji.length, start + emoji.length);
+		}, 0);
+
+		showEmojiPicker = false;
+	}
 
 	function openPubkeyProfile(pubkey: string) {
 		if (!browser) return;
@@ -854,12 +871,32 @@
 				class="flex-1 border-none bg-gray-900 px-2 text-cyan-100 focus:outline-none"
 				autocomplete="off"
 			/>
+
+			<!-- Emoji Button -->
+			<button
+				type="button"
+				onclick={() => (showEmojiPicker = !showEmojiPicker)}
+				class="ml-2 rounded bg-gray-700 px-3 py-1 text-cyan-200 hover:bg-gray-600"
+			>
+				😊
+			</button>
+
+			<!-- Send Button -->
 			<button
 				type="submit"
 				class="ml-2 rounded bg-cyan-600 px-3 py-1 font-bold text-black hover:bg-cyan-700"
 			>
 				Send
 			</button>
+
+			<!-- Emoji Picker Popover -->
+			{#if showEmojiPicker}
+				<emoji-picker
+					class="dark absolute right-2 bottom-12 z-50 rounded shadow-lg"
+					style="width: 320px; max-height: 400px;"
+					onemoji-click={insertEmoji}
+				></emoji-picker>
+			{/if}
 		</form>
 	</div>
 </div>
