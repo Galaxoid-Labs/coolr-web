@@ -15,6 +15,7 @@
 	let messages = $state<Map<string, (Event | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']);
 	let unreadChannels = $state(['#coolr']);
+	let emojiMap = $state<Map<string, string[]>>(new Map());
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
 	let verified = $state<string[]>([]);
@@ -57,6 +58,8 @@
 		if (typeof window !== 'undefined') {
 			(window as any).changeChannel = changeChannel;
 		}
+
+		setEmojiMap();
 	});
 
 	$effect(() => {
@@ -512,6 +515,18 @@
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
+		// check for emoji shortcodes like :smile:
+		const emojiRegex = /:[a-zA-Z0-9_]+:/g;
+		const emojiMatch = input.match(emojiRegex);
+		if (emojiMatch) {
+			emojiMatch.forEach((shortcode) => {
+				const emoji = findEmojiByShortcode(shortcode);
+				if (emoji) {
+					input = input.replace(shortcode, emoji);
+				}
+			});
+		}
+
 		// if starts with / then its a command
 		if (input.startsWith('/')) {
 			const command = input.split(' ')[0].slice(1);
@@ -605,7 +620,9 @@
 
 		input = '';
 	}
+
 	function insertEmoji(e: any) {
+		console.log('insertEmoji', e);
 		const emoji = e.detail.unicode;
 		const inputEl = document.querySelector('input');
 		const start = inputEl?.selectionStart;
@@ -620,6 +637,44 @@
 		}, 0);
 
 		showEmojiPicker = false;
+	}
+
+	function setEmojiMap() {
+		const request = indexedDB.open('emoji-picker-element-en');
+		request.onsuccess = () => {
+			const db = request.result;
+			// Get all emoji data from the database
+			//console.log('Database opened successfully:', db);
+			// query to store 'emoji'
+			// where result value contains shortcodes['heart']
+			const transaction = db.transaction('emoji', 'readonly');
+			const store = transaction.objectStore('emoji');
+			const allEmojis = store.getAll();
+			// map over allEmojis and filter by shortcodes
+			allEmojis.onsuccess = () => {
+				// Store them in a map where the emoji unicode is the key
+				// and the shortcods array is the value
+				const emojis = allEmojis.result;
+				const em = new Map<string, string[]>();
+				emojis.forEach((emoji: any) => {
+					const shortcodes = emoji.shortcodes.map((s: string) => `:${s}:`);
+					const unicode = emoji.unicode;
+					for (const shortcode of shortcodes) {
+						if (!em.has(shortcode)) {
+							em.set(shortcode, []);
+						}
+						em.get(shortcode)?.push(unicode);
+					}
+				});
+				emojiMap = em;
+			};
+		};
+	}
+
+	function findEmojiByShortcode(shortcode: string) {
+		if (!browser) return null;
+		const emojis = emojiMap.get(shortcode);
+		return emojis?.[0] ?? null;
 	}
 
 	function openPubkeyProfile(pubkey: string) {
