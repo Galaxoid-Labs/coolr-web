@@ -17,6 +17,31 @@
 	let unreadChannels = $state(['#coolr']);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
+	// Some other emojis people may use
+	const emoticonMap = new Map([
+		[':)', '🙂'],
+		[':-)', '🙂'],
+		[':(', '🙁'],
+		[':-(', '🙁'],
+		[':D', '😄'],
+		[':-D', '😄'],
+		[':P', '😛'],
+		[':-P', '😛'],
+		[';)', '😉'],
+		[':O', '😮'],
+		[':-O', '😮'],
+		[":'(", '😢'],
+		[':3', '😺'],
+		['XD', '😆'],
+		['B)', '😎'],
+		[':|', '😐'],
+		[':/', '😕'],
+		[':S', '😖'],
+		['>:(', '😠'],
+		['O:)', '😇'],
+		['<3', '❤️']
+	]);
+
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
 	let verified = $state<string[]>([]);
 
@@ -565,6 +590,14 @@
 				});
 			}
 
+			// Also check for emoticons like :) :-)
+			// TODO: Not sure if this is best way to do this
+			for (const [emoticon, emoji] of emoticonMap.entries()) {
+				// Escape for regex, then replace all
+				const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
+				input = input.replace(new RegExp(escaped, 'g'), emoji);
+			}
+
 			// find @mentions in input
 			// Also check for `@name could have spaces`
 			const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
@@ -677,6 +710,12 @@
 		return emojis?.[0] ?? null;
 	}
 
+	function findEmojiByEmoticon(emoticon: string) {
+		if (!browser) return null;
+		const emojis = emoticonMap.get(emoticon);
+		return emojis?.[0] ?? null;
+	}
+
 	function openPubkeyProfile(pubkey: string) {
 		if (!browser) return;
 		const nprofile = nprofileEncode({ pubkey });
@@ -708,6 +747,14 @@
 					linked = linked.replace(shortcode, emoji);
 				}
 			});
+		}
+
+		// Also check for emoticons like :) :-)
+		// TODO: Not sure if this is best way to do this
+		for (const [emoticon, emoji] of emoticonMap.entries()) {
+			// Escape for regex, then replace all
+			const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
+			linked = linked.replace(new RegExp(escaped, 'g'), emoji);
 		}
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;

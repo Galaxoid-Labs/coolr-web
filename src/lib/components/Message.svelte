@@ -2,6 +2,7 @@
 	import type { Event } from 'nostr-tools';
 	import { npubEncode } from 'nostr-tools/nip19';
 	import { formatDate } from '$lib';
+	import DOMPurify from 'dompurify';
 
 	const { nostrPublicKey, event, profileInfo, verified, linkify, openPubkeyProfile } = $props<{
 		nostrPublicKey: string;
@@ -36,7 +37,9 @@
 			>
 		{/if}
 
-		<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
+		<span class="text-gray-100"
+			><strong>{@html DOMPurify.sanitize(linkify(event.content))}</strong></span
+		>
 	{:else}
 		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
 		{#if verified}
@@ -57,6 +60,6 @@
 			>
 		{/if}
 
-		<span class="text-gray-400">{@html linkify(event.content)}</span>
+		<span class="text-gray-400">{@html DOMPurify.sanitize(linkify(event.content))}</span>
 	{/if}
 </div>

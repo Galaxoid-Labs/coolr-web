@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatDate } from '$lib';
+	import DOMPurify from 'dompurify';
 
 	const { event, linkify } = $props<{
 		event: SystemEvent;
@@ -15,6 +16,8 @@
 	{#if event.type === 'help'}
 		<span class="text-gray-100"><strong>{event.content}</strong></span>
 	{:else}
-		<span class="text-gray-100"><strong>{@html linkify(event.content)}</strong></span>
+		<span class="text-gray-100"
+			><strong>{@html DOMPurify.sanitize(linkify(event.content))}</strong></span
+		>
 	{/if}
 </div>
