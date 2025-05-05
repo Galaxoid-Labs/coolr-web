@@ -515,18 +515,6 @@
 		if (!input.trim()) return;
 		if (!window.nostr) return;
 
-		// check for emoji shortcodes like :smile:
-		const emojiRegex = /:[a-zA-Z0-9_]+:/g;
-		const emojiMatch = input.match(emojiRegex);
-		if (emojiMatch) {
-			emojiMatch.forEach((shortcode) => {
-				const emoji = findEmojiByShortcode(shortcode);
-				if (emoji) {
-					input = input.replace(shortcode, emoji);
-				}
-			});
-		}
-
 		// if starts with / then its a command
 		if (input.startsWith('/')) {
 			const command = input.split(' ')[0].slice(1);
@@ -565,6 +553,18 @@
 				alert(`Unknown command: ${command}`);
 			}
 		} else {
+			// check for emoji shortcodes like :smile:
+			const emojiRegex = /:[a-zA-Z0-9_]+:/g;
+			const emojiMatch = input.match(emojiRegex);
+			if (emojiMatch) {
+				emojiMatch.forEach((shortcode) => {
+					const emoji = findEmojiByShortcode(shortcode);
+					if (emoji) {
+						input = input.replace(shortcode, emoji);
+					}
+				});
+			}
+
 			// find @mentions in input
 			// Also check for `@name could have spaces`
 			const mentions = input.match(/`@([^`]+)`|@([a-zA-Z0-9_]+)/g);
@@ -698,6 +698,17 @@
 			(_, prefix, hashtag) =>
 				`${prefix}<span title="Open channel ${hashtag}" class="text-orange-300 hover:underline cursor-pointer" onclick="changeChannel('${hashtag}')">${hashtag}</span>`
 		);
+
+		const emojiRegex = /:[a-zA-Z0-9_]+:/g;
+		const emojiMatch = linked.match(emojiRegex);
+		if (emojiMatch) {
+			emojiMatch.forEach((shortcode) => {
+				const emoji = findEmojiByShortcode(shortcode);
+				if (emoji) {
+					linked = linked.replace(shortcode, emoji);
+				}
+			});
+		}
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
 		const nprofileMatch = text.match(nprofileRegex);
