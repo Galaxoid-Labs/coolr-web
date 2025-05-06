@@ -668,7 +668,9 @@
 		}
 
 		input = '';
-		textareaEl.style.height = 'auto';
+		if (textareaEl) {
+			textareaEl.style.height = 'auto';
+		}
 	}
 
 	function insertEmoji(e: any) {

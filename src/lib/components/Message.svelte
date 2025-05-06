@@ -16,7 +16,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="break-words break-all whitespace-pre-wrap">
+<div class="break-words whitespace-pre-wrap">
 	{#if event.pubkey === nostrPublicKey}
 		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
 		{#if verified}
