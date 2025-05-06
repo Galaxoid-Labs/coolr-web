@@ -17,6 +17,8 @@
 	let unreadChannels = $state(['#coolr']);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
+	let textareaEl: HTMLTextAreaElement | null = null;
+
 	// Some other emojis people may use
 	const emoticonMap = new Map([
 		[':)', '🙂'],
@@ -62,6 +64,20 @@
 		document.addEventListener('visibilitychange', () => {
 			tabActive = document.visibilityState === 'visible';
 		});
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			sendMessage();
+		}
+	}
+
+	function autoResize() {
+		if (textareaEl) {
+			textareaEl.style.height = 'auto';
+			textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+		}
 	}
 
 	onMount(() => {
@@ -652,6 +668,7 @@
 		}
 
 		input = '';
+		textareaEl.style.height = 'auto';
 	}
 
 	function insertEmoji(e: any) {
@@ -976,13 +993,18 @@
 		<!-- Input Bar -->
 		<form class="flex border-t border-cyan-700 p-2" onsubmit={sendMessage}>
 			<!-- svelte-ignore a11y_autofocus -->
-			<input
+			<!-- svelte-ignore element_invalid_self_closing_tag -->
+			<textarea
+				id="message-input"
+				bind:this={textareaEl}
 				autofocus
-				type="text"
 				bind:value={input}
+				onkeydown={handleKeydown}
+				oninput={autoResize}
 				placeholder="Type a message..."
-				class="flex-1 border-none bg-gray-900 px-2 text-cyan-100 focus:outline-none"
+				class="max-h-40 min-h-[1.0rem] flex-1 resize-none overflow-hidden rounded border-none bg-gray-900 px-2 py-[0.3rem] text-cyan-100 focus:outline-none"
 				autocomplete="off"
+				rows="1"
 			/>
 
 			<!-- Emoji Button -->
