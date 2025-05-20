@@ -3,16 +3,19 @@
 	import { onMount } from 'svelte';
 	import { validChannelName, truncateMiddle } from '$lib';
 	import { page } from '$app/stores';
+	import { uuidv7 } from 'uuidv7';
+	import autoAnimate from '@formkit/auto-animate';
 
 	import { SimplePool } from 'nostr-tools/pool';
-	import type { Event, EventTemplate } from 'nostr-tools';
+	import type { EventTemplate, Event } from 'nostr-tools';
 	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
 	import Message from '$lib/components/Message.svelte';
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
+	import { db, type MessageEvent } from '$lib/db';
 
 	let tabActive = $state(true);
 	let nostrPublicKey = $state('');
-	let messages = $state<Map<string, (Event | SystemEvent)[]>>(new Map());
+	let messages = $state<Map<string, (MessageEvent | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']);
 	let unreadChannels = $state(['#coolr']);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
@@ -37,12 +40,14 @@
 		['XD', '😆'],
 		['B)', '😎'],
 		[':|', '😐'],
-		[':/', '😕'],
+		[':/', '😕'], // TODO: Pasting in url parses emoji
 		[':S', '😖'],
 		['>:(', '😠'],
 		['O:)', '😇'],
 		['<3', '❤️']
 	]);
+
+	// TODO: Adding an emoji from picker pastes in the text input if
 
 	let metadata = $state<Map<string, ProfileInfo>>(new Map());
 	let verified = $state<string[]>([]);
@@ -203,15 +208,33 @@
 			nostrPublicKey = currentNostrPublicKey;
 		}
 
-		const rawMessages = localStorage.getItem('messages');
-		if (rawMessages) {
-			try {
-				const parsed = JSON.parse(rawMessages) as Record<string, Event[]>;
-				messages = new Map(Object.entries(parsed));
-			} catch (e) {
-				console.error('Failed to parse messages:', e);
-			}
-		}
+		// Load cache from indexedDB into messages map
+		db.messages
+			.where('relayUrl')
+			.equals(relayUrl)
+			.toArray()
+			.then((events) => {
+				events.sort((a, b) => a.created_at - b.created_at); // Sort by created_at
+				events.forEach((event) => {
+					const channel = event.channel || '';
+					const current = messages.get(channel) ?? [];
+					// TODO: Check for duplicates
+					messages.set(channel, [...current, event]);
+				});
+			})
+			.finally(() => {
+				messages = new Map(messages);
+			});
+
+		// const rawMessages = localStorage.getItem('messages');
+		// if (rawMessages) {
+		// 	try {
+		// 		const parsed = JSON.parse(rawMessages) as Record<string, MessageEvent[]>;
+		// 		messages = new Map(Object.entries(parsed));
+		// 	} catch (e) {
+		// 		console.error('Failed to parse messages:', e);
+		// 	}
+		// }
 
 		const rawMetadata = localStorage.getItem('metadata');
 		if (rawMetadata) {
@@ -257,12 +280,20 @@
 		}
 	}
 
-	function saveCache() {
+	async function saveCache() {
 		if (!browser) return;
 		localStorage.setItem('relayUrl', relayUrl);
 
-		const serialized = JSON.stringify(Object.fromEntries(messages));
-		localStorage.setItem('messages', serialized);
+		// Save messages to indexedDB
+		try {
+			const messagesArray = Array.from(messages.values()).flat();
+			await db.messages.bulkPut(messagesArray);
+		} catch (e) {
+			console.error('Error saving messages to indexedDB:', e);
+		}
+
+		// const serialized = JSON.stringify(Object.fromEntries(messages));
+		// localStorage.setItem('messages', serialized);
 
 		const serializedMetadata = JSON.stringify(Object.fromEntries(metadata));
 		localStorage.setItem('metadata', serializedMetadata);
@@ -334,7 +365,7 @@
 				limit: 0
 			},
 			{
-				onevent(event: Event) {
+				onevent(event: MessageEvent) {
 					event.created_at = Math.floor(Date.now() / 1000); // Doing this since event created_at not really reliable
 
 					const channelTag = event.tags.find((tag) => tag[0] === 'd');
@@ -342,8 +373,16 @@
 						let channel = channelTag ? channelTag[1] : '';
 						channel = '#' + channel; // ensure it starts with a #
 
+						// MessageEvent
+						//event = event as MessageEvent;
+						event.channel = channel;
+						event.relayUrl = relayUrl;
+
 						addMessageToChannel(channel, event);
 						subscribeMetadata();
+
+						// TEST
+						db.messages.add(event);
 
 						// Notify if message is not from current user
 						// Check content for nostr:nprofile...
@@ -388,7 +427,7 @@
 		// get unique pubkeys from messages
 		const pubkeys = Array.from(messages.values())
 			.flat()
-			.filter((msg): msg is Event => 'pubkey' in msg)
+			.filter((msg): msg is MessageEvent => 'pubkey' in msg)
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
 
@@ -409,7 +448,7 @@
 			},
 			{
 				id: 'metadata',
-				onevent(event: Event) {
+				onevent(event: MessageEvent) {
 					const pubkey = event.pubkey;
 
 					let content: string;
@@ -448,7 +487,7 @@
 		);
 	}
 
-	function addMessageToChannel(channel: string, event: Event | SystemEvent) {
+	function addMessageToChannel(channel: string, event: MessageEvent | SystemEvent) {
 		if (!channels.includes(channel)) {
 			channels = [...channels, channel];
 		}
@@ -466,7 +505,7 @@
 		}
 
 		if ('pubkey' in event) {
-			if (current.some((msg): msg is Event => 'id' in msg && msg.id === event.id)) {
+			if (current.some((msg): msg is MessageEvent => 'id' in msg && msg.id === event.id)) {
 				return; // Ignore duplicate messages
 			}
 		}
@@ -562,6 +601,8 @@
 			if (command === 'help') {
 				// simply add SystemMessage to the channel message map
 				const systemEvent: SystemEvent = {
+					channel: selectedChannel,
+					id: uuidv7(),
 					type: 'help',
 					content:
 						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel',
@@ -674,53 +715,60 @@
 	}
 
 	function insertEmoji(e: any) {
-		console.log('insertEmoji', e);
 		const emoji = e.detail.unicode;
-		const inputEl = document.querySelector('input');
-		const start = inputEl?.selectionStart;
-		const end = inputEl?.selectionEnd;
-		if (start === null || end === null) return;
-		input = input.slice(0, start) + emoji + input.slice(end);
 
-		// timeout then set focus
+		const inputEl = document.querySelector('textarea') as HTMLTextAreaElement;
+		if (!inputEl) return;
+
+		const start = inputEl.selectionStart;
+		const end = inputEl.selectionEnd;
+		if (start === null || end === null) return;
+
+		// Use actual textarea value to avoid stale `input`
+		const currentValue = inputEl.value;
+		const updatedValue = currentValue.slice(0, start) + emoji + currentValue.slice(end);
+
+		input = updatedValue;
+
+		// Restore cursor after emoji insert
 		setTimeout(() => {
-			inputEl?.focus();
-			inputEl?.setSelectionRange(start + emoji.length, start + emoji.length);
+			inputEl.focus();
+			inputEl.setSelectionRange(start + emoji.length, start + emoji.length);
 		}, 0);
 
 		showEmojiPicker = false;
 	}
 
 	function setEmojiMap() {
-		const request = indexedDB.open('emoji-picker-element-en');
-		request.onsuccess = () => {
-			const db = request.result;
-			// Get all emoji data from the database
-			//console.log('Database opened successfully:', db);
-			// query to store 'emoji'
-			// where result value contains shortcodes['heart']
-			const transaction = db.transaction('emoji', 'readonly');
-			const store = transaction.objectStore('emoji');
-			const allEmojis = store.getAll();
-			// map over allEmojis and filter by shortcodes
-			allEmojis.onsuccess = () => {
-				// Store them in a map where the emoji unicode is the key
-				// and the shortcods array is the value
-				const emojis = allEmojis.result;
-				const em = new Map<string, string[]>();
-				emojis.forEach((emoji: any) => {
-					const shortcodes = emoji.shortcodes.map((s: string) => `:${s}:`);
-					const unicode = emoji.unicode;
-					for (const shortcode of shortcodes) {
-						if (!em.has(shortcode)) {
-							em.set(shortcode, []);
-						}
-						em.get(shortcode)?.push(unicode);
-					}
-				});
-				emojiMap = em;
-			};
-		};
+		// const request = indexedDB.open('emoji-picker-element-en');
+		// request.onsuccess = () => {
+		// 	const db = request.result;
+		// 	// Get all emoji data from the database
+		// 	//console.log('Database opened successfully:', db);
+		// 	// query to store 'emoji'
+		// 	// where result value contains shortcodes['heart']
+		// 	const transaction = db.transaction('emoji', 'readonly');
+		// 	const store = transaction.objectStore('emoji');
+		// 	const allEmojis = store.getAll();
+		// 	// map over allEmojis and filter by shortcodes
+		// 	allEmojis.onsuccess = () => {
+		// 		// Store them in a map where the emoji unicode is the key
+		// 		// and the shortcods array is the value
+		// 		const emojis = allEmojis.result;
+		// 		const em = new Map<string, string[]>();
+		// 		emojis.forEach((emoji: any) => {
+		// 			const shortcodes = emoji.shortcodes.map((s: string) => `:${s}:`);
+		// 			const unicode = emoji.unicode;
+		// 			for (const shortcode of shortcodes) {
+		// 				if (!em.has(shortcode)) {
+		// 					em.set(shortcode, []);
+		// 				}
+		// 				em.get(shortcode)?.push(unicode);
+		// 			}
+		// 		});
+		// 		emojiMap = em;
+		// 	};
+		// };
 	}
 
 	function findEmojiByShortcode(shortcode: string) {
@@ -910,7 +958,7 @@
 					+
 				</button>
 			</div>
-			<div class="flex-1 overflow-y-auto text-sm">
+			<div use:autoAnimate={{ duration: 100 }} class="flex-1 overflow-y-auto text-sm">
 				{#each channels as channel}
 					<div
 						class="cursor-pointer px-2 py-1 hover:bg-cyan-700 hover:text-black {channel ===
@@ -967,6 +1015,7 @@
 
 		<!-- Chat Messages -->
 		<div
+			use:autoAnimate={{ duration: 100 }}
 			class="flex-1 space-y-1 overflow-x-auto overflow-y-auto p-2 text-sm break-words whitespace-pre-wrap"
 			bind:this={chatContainer}
 			onscroll={handleScroll}

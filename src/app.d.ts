@@ -11,12 +11,16 @@ declare global {
 	interface Window {
 		nostr?: WindowNostr;
 	}
+
 	interface ProfileInfo {
 		pubkey: string;
 		nip05?: string;
 		name?: string;
 	}
+
 	interface SystemEvent {
+		id: string;
+		channel: string;
 		type: 'error' | 'info' | 'help';
 		created_at: number;
 		content: string;
