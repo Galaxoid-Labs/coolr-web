@@ -2,7 +2,7 @@
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { validChannelName, truncateMiddle } from '$lib';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { uuidv7 } from 'uuidv7';
 	import autoAnimate from '@formkit/auto-animate';
 
@@ -11,13 +11,14 @@
 	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
 	import Message from '$lib/components/Message.svelte';
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
-	import { db, type MessageEvent } from '$lib/db';
+	import { db, type MessageEvent, type ProfileInfo, type SystemEvent } from '$lib/db';
 
 	let tabActive = $state(true);
 	let nostrPublicKey = $state('');
+	let profileMetadata = $state<Map<string, ProfileInfo>>(new Map());
 	let messages = $state<Map<string, (MessageEvent | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']);
-	let unreadChannels = $state(['#coolr']);
+	let unreadChannels = $state(['']);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
 	let textareaEl: HTMLTextAreaElement | null = null;
@@ -49,9 +50,6 @@
 
 	// TODO: Adding an emoji from picker pastes in the text input if
 
-	let metadata = $state<Map<string, ProfileInfo>>(new Map());
-	let verified = $state<string[]>([]);
-
 	let selectedChannel = $state('#_');
 	let showSidebar = $state(true);
 	let autoScroll = $state(true);
@@ -60,9 +58,10 @@
 	let chatContainer: HTMLDivElement;
 	let showEmojiPicker = $state(false);
 
-	let relayUrl = $state('wss://relay.damus.io');
 	const METADATA_RELAY_URL = 'wss://purplepag.es';
+	const START_RELAY_URL = 'wss://nos.lol';
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
+	let relayUrl = $state(START_RELAY_URL);
 	let pool: SimplePool;
 
 	if (browser) {
@@ -144,7 +143,7 @@
 		// 	//handleRelayChannelChange(relay, channel);
 		// }
 
-		saveCache();
+		saveCache(); // TODO: Maybe debounce this or be more selective
 
 		if (autoScroll && messages.size > 0) {
 			if ((messages.get(selectedChannel) ?? []).length > 0) {
@@ -162,9 +161,9 @@
 
 	function handlePath() {
 		if (!browser) return;
-		const params = $page.url.searchParams;
+		const params = page.url.searchParams;
 		const newRelay = params.get('relay') || relayUrl;
-		const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+		const newChannel = page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
 		// if (newRelay !== relayUrl) {
 		// 	relayUrl = newRelay;
 		// 	pool.close([relayUrl]);
@@ -191,16 +190,16 @@
 	function loadCache() {
 		if (!browser) return;
 		const version = localStorage.getItem('version');
-		if (version !== '3') {
+		if (version !== '4') {
 			localStorage.clear();
-			localStorage.setItem('version', '3');
+			localStorage.setItem('version', '4');
 		}
 
 		const storedRelayUrl = localStorage.getItem('relayUrl');
 		if (storedRelayUrl) {
 			relayUrl = storedRelayUrl;
 		} else {
-			localStorage.setItem('relayUrl', 'wss://relay.damus.io');
+			localStorage.setItem('relayUrl', START_RELAY_URL);
 		}
 
 		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
@@ -214,6 +213,7 @@
 			.equals(relayUrl)
 			.toArray()
 			.then((events) => {
+				messages.clear();
 				events.sort((a, b) => a.created_at - b.created_at); // Sort by created_at
 				events.forEach((event) => {
 					const channel = event.channel || '';
@@ -226,53 +226,44 @@
 				messages = new Map(messages);
 			});
 
-		// const rawMessages = localStorage.getItem('messages');
-		// if (rawMessages) {
-		// 	try {
-		// 		const parsed = JSON.parse(rawMessages) as Record<string, MessageEvent[]>;
-		// 		messages = new Map(Object.entries(parsed));
-		// 	} catch (e) {
-		// 		console.error('Failed to parse messages:', e);
-		// 	}
-		// }
+		// Load profiles cache
+		db.profiles
+			.toArray()
+			.then((profiles) => {
+				profiles.forEach((profile) => {
+					profileMetadata.set(profile.pubkey, profile);
+				});
+			})
+			.finally(() => {
+				profileMetadata = new Map(profileMetadata);
+			});
 
-		const rawMetadata = localStorage.getItem('metadata');
-		if (rawMetadata) {
-			try {
-				const parsed = JSON.parse(rawMetadata) as Record<string, ProfileInfo>;
-				metadata = new Map(Object.entries(parsed));
-			} catch (e) {
-				console.error('Failed to parse metadata:', e);
-			}
-		}
+		// Load channels cache
+		db.channels
+			.where('relayUrl')
+			.equals(relayUrl)
+			.first()
+			.then((channelsData) => {
+				if (channelsData) {
+					channels = channelsData.channels;
+				} else {
+					channels = ['#_'];
+				}
+			});
 
-		const rawVerified = localStorage.getItem('verified');
-		if (rawVerified) {
-			try {
-				const parsed = JSON.parse(rawVerified) as string[];
-				verified = parsed;
-			} catch (e) {
-				console.error('Failed to parse verified:', e);
-			}
-		}
 
-		const rawChannels = localStorage.getItem('channels');
-		if (rawChannels) {
-			try {
-				channels = JSON.parse(rawChannels);
-			} catch (e) {
-				console.error('Failed to parse channels:', e);
-			}
-		}
-
-		const rawUnreadChannels = localStorage.getItem('unreadChannels');
-		if (rawUnreadChannels) {
-			try {
-				unreadChannels = JSON.parse(rawUnreadChannels);
-			} catch (e) {
-				console.error('Failed to parse unread channels:', e);
-			}
-		}
+		// Load unread channels cache
+		db.unreadChannels
+			.where('relayUrl')
+			.equals(relayUrl)
+			.first()
+			.then((unreadChannelsData) => {
+				if (unreadChannelsData) {
+					unreadChannels = unreadChannelsData.channels;
+				} else {
+					unreadChannels = [''];
+				}
+			});
 
 		const currentSelectedChannel = localStorage.getItem('selectedChannel');
 		if (currentSelectedChannel) {
@@ -282,9 +273,9 @@
 
 	async function saveCache() {
 		if (!browser) return;
+
 		localStorage.setItem('relayUrl', relayUrl);
 
-		// Save messages to indexedDB
 		try {
 			const messagesArray = Array.from(messages.values()).flat();
 			await db.messages.bulkPut(messagesArray);
@@ -292,19 +283,33 @@
 			console.error('Error saving messages to indexedDB:', e);
 		}
 
-		// const serialized = JSON.stringify(Object.fromEntries(messages));
-		// localStorage.setItem('messages', serialized);
+		try {
+			const profilesArray = Array.from(profileMetadata.values()); // TODO: Need .flat() here?
+			await db.profiles.bulkPut(profilesArray);
+		} catch (e) {
+			console.error('Error saving profiles to indexedDB:', e);
+		}
 
-		const serializedMetadata = JSON.stringify(Object.fromEntries(metadata));
-		localStorage.setItem('metadata', serializedMetadata);
+		try {
+			await db.channels.put({
+				relayUrl: relayUrl,
+				channels: Array.from(channels.values())
+			});
+		} catch (e) {
+			console.error('Error saving channels to indexedDB:', e);
+		}
 
-		const serializedVerified = JSON.stringify(verified);
-		localStorage.setItem('verified', serializedVerified);
+		try {
+			await db.unreadChannels.put({
+				relayUrl: relayUrl,
+				channels: Array.from(unreadChannels.values())
+			});
+		} catch (e) {
+			console.error('Error saving unread channels to indexedDB:', e);
+		}
 
-		localStorage.setItem('channels', JSON.stringify(channels));
 		localStorage.setItem('selectedChannel', selectedChannel);
 		localStorage.setItem('nostrPublicKey', nostrPublicKey);
-		localStorage.setItem('unreadChannels', JSON.stringify(unreadChannels));
 	}
 
 	async function login() {
@@ -345,8 +350,13 @@
 				if (data.names) {
 					const name = nip05.split('@')[0];
 					const pubkeyFromName = data.names[name];
-					if (pubkeyFromName === pubkey && !verified.includes(pubkey)) {
-						verified.push(pubkey);
+					if (pubkeyFromName === pubkey) {
+						// Update metadata map
+						const current = profileMetadata.get(pubkey) ?? null;
+						if (current) {
+							current.verified = true;
+							profileMetadata.set(pubkey, { ...current });
+						}
 					}
 				}
 			}
@@ -374,7 +384,6 @@
 						channel = '#' + channel; // ensure it starts with a #
 
 						// MessageEvent
-						//event = event as MessageEvent;
 						event.channel = channel;
 						event.relayUrl = relayUrl;
 
@@ -399,7 +408,7 @@
 
 								if (pubkey === nostrPublicKey) {
 									const from =
-										metadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12);
+										profileMetadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12);
 									// TODO: Replace nostr:nprofile with @name
 									notify(`${from} mentioned you in ${channel}`, `${event.content}`);
 									break;
@@ -411,10 +420,14 @@
 				onclose(reasons: string[]) {
 					console.log('Connection closed:', reasons);
 					// TODO: Not sure if this is best way to handle disconnects??
-					setTimeout(() => {
-						console.log('Reconnecting...');
-						connectToRelay();
-					}, 5000);
+					// Wish we had a close code to check for instead of string that could change
+					if (!reasons.includes('relay connection closed by us')) {
+						setTimeout(() => {
+							pool.destroy();
+							console.log('Reconnecting...');
+							connectToRelay();
+						}, 5000);
+					}
 				}
 			}
 		);
@@ -437,7 +450,7 @@
 		}
 
 		// check if new pubkeys are in metadata map
-		const newPubkeys = pubkeys.filter((pubkey) => !metadata.has(pubkey));
+		const newPubkeys = pubkeys.filter((pubkey) => !profileMetadata.has(pubkey));
 		if (newPubkeys.length === 0) return; // No new pubkeys to subscribe to
 
 		pool.subscribe(
@@ -463,24 +476,28 @@
 					const nip05 = (content as { nip05?: string }).nip05;
 					let profile: ProfileInfo = {
 						pubkey: pubkey,
+						verified: false,
 						name: (content as { name?: string }).name
 					};
 
 					if (nip05) {
 						profile.nip05 = nip05;
-						const current = metadata.get(pubkey) ?? null;
+						const current = profileMetadata.get(pubkey) ?? null;
 						if (current) {
-							metadata.set(pubkey, { ...current, ...profile });
+							profile.verified = current.verified;
+							profileMetadata.set(pubkey, { ...current, ...profile });
 						} else {
-							metadata.set(pubkey, profile);
+							profileMetadata.set(pubkey, profile);
 						}
 
-						const newMap = new Map(metadata);
-						metadata = newMap;
+						const newMap = new Map(profileMetadata);
+						profileMetadata = newMap;
 
-						if (!verified.includes(pubkey)) {
-							verifyNip05(nip05, pubkey);
+						// Check if nip05 is verified
+						if (!profile.verified) {
+							verifyNip05(nip05, pubkey)
 						}
+
 					}
 				}
 			}
@@ -672,7 +689,7 @@
 						cleanMention = mention.slice(1); // remove @
 					}
 
-					const profile = Array.from(metadata.values()).find((p) => p.name === cleanMention);
+					const profile = Array.from(profileMetadata.values()).find((p) => p.name === cleanMention);
 
 					if (profile) {
 						input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
@@ -835,7 +852,7 @@
 				if (dec.type !== 'nprofile') continue;
 				const pubkey = dec.data.pubkey;
 
-				const profile = metadata.get(pubkey);
+				const profile = profileMetadata.get(pubkey);
 				if (!profile) continue;
 				const name = profile.name;
 				if (!name) continue;
@@ -857,7 +874,7 @@
 				if (!dec) continue;
 				if (dec.type !== 'npub') continue;
 				const pubkey = dec.data;
-				const profile = metadata.get(pubkey);
+				const profile = profileMetadata.get(pubkey);
 				if (!profile) continue;
 				const name = profile.name;
 				if (!name) continue;
@@ -894,7 +911,7 @@
 		if (!withBaseUrl) {
 			return `/${path}`;
 		}
-		const baseUrl = `${$page.url.origin}`;
+		const baseUrl = `${page.url.origin}`;
 		return `${baseUrl}/${path}`;
 	}
 
@@ -904,7 +921,6 @@
 
 	function selectChannel(channel: string) {
 		selectedChannel = channel;
-		// remove channel from unreadChannels
 		unreadChannels = unreadChannels.filter((c) => c !== channel);
 	}
 
@@ -924,18 +940,21 @@
 	function changeRelayUrl() {
 		const newRelayUrl = prompt('Enter new relay URL:', relayUrl);
 		if (newRelayUrl) {
-			// clear messages and channels
-			messages = new Map();
-			channels = ['#_'];
-			selectedChannel = '#_';
 
-			// disconnect and reconnect to the new relay
-			pool.close([relayUrl]);
+			pool.destroy();
 
-			relayUrl = newRelayUrl;
+			setTimeout(() => {
 
-			console.log('Relay URL updated to:', relayUrl);
-			connectToRelay();
+				relayUrl = newRelayUrl;
+				localStorage.setItem('relayUrl', relayUrl);
+
+				loadCache();
+				selectedChannel = '#_';
+
+				connectToRelay();
+
+			}, 1000);
+
 		}
 	}
 </script>
@@ -1006,7 +1025,7 @@
 					{:else}
 						|
 						<span class="text-cyan-300">
-							({npubEncode(nostrPublicKey).slice(0, 12)}) {metadata.get(nostrPublicKey)?.nip05}
+							({npubEncode(nostrPublicKey).slice(0, 12)}) {profileMetadata.get(nostrPublicKey)?.nip05}
 						</span>
 					{/if}
 				</span>
@@ -1027,8 +1046,7 @@
 						<Message
 							{nostrPublicKey}
 							{event}
-							profileInfo={metadata.get(event.pubkey)}
-							verified={verified.includes(event.pubkey)}
+							profileInfo={profileMetadata.get(event.pubkey)}
 							{linkify}
 							{openPubkeyProfile}
 						/>

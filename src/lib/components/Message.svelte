@@ -3,12 +3,12 @@
 	import { npubEncode } from 'nostr-tools/nip19';
 	import { formatDate } from '$lib';
 	import DOMPurify from 'dompurify';
+	import type { ProfileInfo } from '$lib/db';
 
-	const { nostrPublicKey, event, profileInfo, verified, linkify, openPubkeyProfile } = $props<{
+	const { nostrPublicKey, event, profileInfo, linkify, openPubkeyProfile } = $props<{
 		nostrPublicKey: string;
 		event: Event;
 		profileInfo: ProfileInfo | undefined;
-		verified: boolean;
 		linkify: (text: string) => string;
 		openPubkeyProfile: (pubkey: string) => void;
 	}>();
@@ -19,7 +19,7 @@
 <div class="break-words whitespace-pre-wrap">
 	{#if event.pubkey === nostrPublicKey}
 		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
-		{#if verified}
+		{#if profileInfo && profileInfo.verified}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-300 hover:underline"
@@ -42,7 +42,7 @@
 		>
 	{:else}
 		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
-		{#if verified}
+		{#if profileInfo && profileInfo.verified}
 			<span
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-600 opacity-70 hover:underline"
