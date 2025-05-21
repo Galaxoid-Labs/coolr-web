@@ -18,7 +18,7 @@
 	let profileMetadata = $state<Map<string, ProfileInfo>>(new Map());
 	let messages = $state<Map<string, (MessageEvent | SystemEvent)[]>>(new Map());
 	let channels = $state(['#_']);
-	let unreadChannels = $state(['']);
+	let unreadChannels = $state([]);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
 	let textareaEl: HTMLTextAreaElement | null = null;
@@ -261,7 +261,7 @@
 				if (unreadChannelsData) {
 					unreadChannels = unreadChannelsData.channels;
 				} else {
-					unreadChannels = [''];
+					unreadChannels = [];
 				}
 			});
 
