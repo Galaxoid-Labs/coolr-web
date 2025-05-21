@@ -33,7 +33,6 @@ export const db = new Dexie('coolr') as Dexie & {
 	unreadChannels: EntityTable<Channels, 'relayUrl'>;
 };
 
-// 3. Declare your store schema
 db.version(1).stores({
 	messages: 'id, created_at, pubkey, kind, type, relayUrl, channel',
 	profiles: 'pubkey, nip05, name, verified',

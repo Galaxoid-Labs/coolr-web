@@ -11,7 +11,6 @@ declare global {
 	interface Window {
 		nostr?: WindowNostr;
 	}
-
 }
 
-export { };
+export {};
