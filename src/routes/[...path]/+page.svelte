@@ -13,6 +13,10 @@
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 	import { db, type MessageEvent, type ProfileInfo, type SystemEvent } from '$lib/db';
 
+	let showRelayModal = $state(false);
+	let relayInput = $state('');
+	let relayList = $state(['wss://nos.lol', 'wss://relay.damus.io']);
+
 	let tabActive = $state(true);
 	let nostrPublicKey = $state('');
 	let profileMetadata = $state<Map<string, ProfileInfo>>(new Map());
@@ -57,11 +61,13 @@
 	let input = $state('');
 	let chatContainer: HTMLDivElement;
 	let showEmojiPicker = $state(false);
+	let showWelcomeModal = $state(false);
+	let showSettingsModal = $state(false);
 
 	const METADATA_RELAY_URL = 'wss://purplepag.es';
-	const START_RELAY_URL = 'wss://nos.lol';
+	//const START_RELAY_URL = 'wss://nos.lol';
 	const CHAT_KIND = 23333; // kind for channel messages: TBD
-	let relayUrl = $state(START_RELAY_URL);
+	let relayUrl = $state('');
 	let pool: SimplePool;
 
 	if (browser) {
@@ -86,6 +92,10 @@
 
 	onMount(() => {
 		if (!browser) return;
+
+		if (!localStorage.getItem('coolr-welcome-shown')) {
+			showWelcomeModal = true;
+		}
 
 		loadCache();
 
@@ -159,6 +169,23 @@
 		}
 	});
 
+	function clearAllSiteData() {
+		if (
+			confirm(
+				'Are you sure you want to clear all site data? This will log you out and remove all cached messages, profiles, and settings.'
+			)
+		) {
+			localStorage.clear();
+			if (db) {
+				db.delete().then(() => {
+					location.reload();
+				});
+			} else {
+				location.reload();
+			}
+		}
+	}
+
 	function handlePath() {
 		if (!browser) return;
 		const params = page.url.searchParams;
@@ -199,7 +226,9 @@
 		if (storedRelayUrl) {
 			relayUrl = storedRelayUrl;
 		} else {
-			localStorage.setItem('relayUrl', START_RELAY_URL);
+			// Show relay modal
+			//localStorage.setItem('relayUrl', START_RELAY_URL);
+			showRelayModal = true;
 		}
 
 		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
@@ -250,7 +279,6 @@
 					channels = ['#_'];
 				}
 			});
-
 
 		// Load unread channels cache
 		db.unreadChannels
@@ -368,6 +396,7 @@
 	function connectToRelay() {
 		if (!browser) return;
 		if (!pool) return;
+		if (!relayUrl) return;
 		pool.subscribe(
 			[relayUrl],
 			{
@@ -408,7 +437,8 @@
 
 								if (pubkey === nostrPublicKey) {
 									const from =
-										profileMetadata.get(event.pubkey)?.name || npubEncode(event.pubkey).slice(0, 12);
+										profileMetadata.get(event.pubkey)?.name ||
+										npubEncode(event.pubkey).slice(0, 12);
 									// TODO: Replace nostr:nprofile with @name
 									notify(`${from} mentioned you in ${channel}`, `${event.content}`);
 									break;
@@ -495,9 +525,8 @@
 
 						// Check if nip05 is verified
 						if (!profile.verified) {
-							verifyNip05(nip05, pubkey)
+							verifyNip05(nip05, pubkey);
 						}
-
 					}
 				}
 			}
@@ -938,26 +967,153 @@
 	}
 
 	function changeRelayUrl() {
-		const newRelayUrl = prompt('Enter new relay URL:', relayUrl);
-		if (newRelayUrl) {
-
+		if (relayInput !== '' && relayInput !== relayUrl) {
 			pool.destroy();
 
 			setTimeout(() => {
-
-				relayUrl = newRelayUrl;
+				relayUrl = relayInput;
+				relayInput = '';
 				localStorage.setItem('relayUrl', relayUrl);
 
 				loadCache();
 				selectedChannel = '#_';
 
 				connectToRelay();
-
-			}, 1000);
-
+			}, 300);
 		}
 	}
 </script>
+
+{#if showSettingsModal}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+		<div class="w-full max-w-sm rounded-lg border border-cyan-700 bg-gray-800 p-6 shadow-lg">
+			<h2 class="mb-4 text-lg font-bold text-cyan-200">Settings</h2>
+			<div class="mb-6">
+				<button
+					class="w-full rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-700"
+					onclick={clearAllSiteData}
+				>
+					Clear All Site Data
+				</button>
+				<p class="mt-4 text-sm text-cyan-100">
+					This will remove all cached messages, profiles, and settings. The page will reload.
+				</p>
+			</div>
+			<div class="flex justify-end">
+				<button
+					class="rounded bg-gray-700 px-3 py-1 text-cyan-200 hover:bg-gray-600"
+					onclick={() => (showSettingsModal = false)}
+				>
+					Close
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showWelcomeModal}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+		<div class="w-full max-w-lg rounded-lg border border-cyan-700 bg-gray-800 p-6 shadow-lg">
+			<h2 class="mb-4 text-2xl font-bold text-cyan-200">Welcome to Coolr!</h2>
+			<div class="mb-4 space-y-2 text-cyan-100">
+				<p>
+					<strong>Coolr</strong> is a simple, open-source, ephemeral group chat built on
+					<a href="https://nostr.com" target="_blank" class="text-cyan-400 underline">Nostr</a>.
+				</p>
+				<ul class="list-disc pl-5">
+					<li>Connect using your favorite your Nostr extension.</li>
+					<li>
+						Join or create public channels using hashtags (e.g. <span class="text-orange-300"
+							>#general</span
+						>).
+					</li>
+					<li>
+						All messages are ephemeral (temporary), you only see messages if you are connected.
+					</li>
+					<li>
+						Open source: <a
+							href="https://github.com/Galaxoid-labs/coolr-web"
+							target="_blank"
+							class="text-cyan-400 underline">GitHub</a
+						>
+					</li>
+				</ul>
+				<p>
+					To get started, pick a relay and join or create a channel. If needed install a Nostr
+					browser extension like <a
+						href="https://nostrapps.com/alby"
+						target="_blank"
+						class="text-cyan-400 underline">Alby</a
+					>
+					or
+					<a href="https://nostrapps.com/nos2x" target="_blank" class="text-cyan-400 underline"
+						>Nos2x</a
+					>.
+				</p>
+			</div>
+			<div class="flex justify-end">
+				<button
+					class="rounded bg-cyan-600 px-4 py-2 font-bold text-black hover:bg-cyan-700"
+					onclick={() => {
+						showWelcomeModal = false;
+						localStorage.setItem('coolr-welcome-shown', '1');
+					}}
+				>
+					Get Started
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showRelayModal && !showWelcomeModal}
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+		<div class="w-full max-w-md rounded-lg border border-cyan-700 bg-gray-800 p-6 shadow-lg">
+			<h2 class="mb-4 text-lg font-bold text-cyan-200">Choose Relay</h2>
+			<input
+				class="mb-4 w-full rounded border border-cyan-700 bg-gray-900 p-2 text-cyan-100"
+				bind:value={relayInput}
+				placeholder="wss://"
+				autofocus
+			/>
+			<div class="mb-4">
+				<div class="mb-2 text-cyan-400">Popular Relays:</div>
+				<ul>
+					{#each relayList as relay}
+						<li>
+							<button
+								type="button"
+								class="w-full rounded px-2 py-1 text-left text-cyan-200 hover:bg-cyan-700"
+								onclick={() => (relayInput = relay)}
+							>
+								{relay}
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+			<div class="flex justify-end gap-2">
+				<button
+					class="rounded bg-gray-700 px-3 py-1 text-cyan-200 hover:bg-gray-600"
+					onclick={() => (showRelayModal = false)}
+				>
+					Cancel
+				</button>
+				<button
+					class="rounded bg-cyan-600 px-3 py-1 font-bold text-black hover:bg-cyan-700"
+					onclick={() => {
+						changeRelayUrl();
+						if (relayInput !== '') {
+							showRelayModal = false;
+						}
+					}}
+				>
+					Connect
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <!-- Main Layout -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1014,8 +1170,9 @@
 				</button>
 				<span>
 					<span class="text-cyan-100"> {selectedChannel} </span> |
-					<span class="cursor-pointer text-purple-300 hover:underline" onclick={changeRelayUrl}
-						>{relayUrl}</span
+					<span
+						class="cursor-pointer text-purple-300 hover:underline"
+						onclick={() => (showRelayModal = true)}>{relayUrl || 'Choose Relay'}</span
 					>
 					{#if !nostrPublicKey}
 						|
@@ -1025,11 +1182,19 @@
 					{:else}
 						|
 						<span class="text-cyan-300">
-							({npubEncode(nostrPublicKey).slice(0, 12)}) {profileMetadata.get(nostrPublicKey)?.nip05}
+							({npubEncode(nostrPublicKey).slice(0, 12)}) {profileMetadata.get(nostrPublicKey)
+								?.nip05}
 						</span>
 					{/if}
 				</span>
 			</div>
+			<button
+				class="ml-2 text-cyan-400 hover:text-cyan-200"
+				title="Settings"
+				onclick={() => (showSettingsModal = true)}
+			>
+				⚙️
+			</button>
 		</div>
 
 		<!-- Chat Messages -->
