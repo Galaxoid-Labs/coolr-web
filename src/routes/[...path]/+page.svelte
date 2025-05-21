@@ -15,7 +15,7 @@
 
 	let showRelayModal = $state(false);
 	let relayInput = $state('');
-	let relayList = $state(['wss://nos.lol', 'wss://relay.damus.io']);
+	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
 
 	let tabActive = $state(true);
 	let nostrPublicKey = $state('');
