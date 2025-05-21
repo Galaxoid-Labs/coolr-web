@@ -695,11 +695,11 @@
 
 			// Also check for emoticons like :) :-)
 			// TODO: Not sure if this is best way to do this
-			for (const [emoticon, emoji] of emoticonMap.entries()) {
-				// Escape for regex, then replace all
-				const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
-				input = input.replace(new RegExp(escaped, 'g'), emoji);
-			}
+			// for (const [emoticon, emoji] of emoticonMap.entries()) {
+			// 	// Escape for regex, then replace all
+			// 	const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
+			// 	input = input.replace(new RegExp(escaped, 'g'), emoji);
+			// }
 
 			// find @mentions in input
 			// Also check for `@name could have spaces`
@@ -864,11 +864,11 @@
 
 		// Also check for emoticons like :) :-)
 		// TODO: Not sure if this is best way to do this
-		for (const [emoticon, emoji] of emoticonMap.entries()) {
-			// Escape for regex, then replace all
-			const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
-			linked = linked.replace(new RegExp(escaped, 'g'), emoji);
-		}
+		// for (const [emoticon, emoji] of emoticonMap.entries()) {
+		// 	// Escape for regex, then replace all
+		// 	const escaped = emoticon.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, '\\$1');
+		// 	linked = linked.replace(new RegExp(escaped, 'g'), emoji);
+		// }
 
 		const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
 		const nprofileMatch = text.match(nprofileRegex);
