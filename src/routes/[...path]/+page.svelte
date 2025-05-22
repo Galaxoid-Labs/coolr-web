@@ -1,96 +1,37 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { validChannelName, truncateMiddle } from '$lib';
+	import { validChannelName, truncateMiddle, emoticonMap } from '$lib';
 	import { page } from '$app/state';
 	import { uuidv7 } from 'uuidv7';
 	import autoAnimate from '@formkit/auto-animate';
 
-	import { SimplePool } from 'nostr-tools/pool';
 	import type { EventTemplate, Event } from 'nostr-tools';
 	import { nprofileEncode, npubEncode, decodeNostrURI } from 'nostr-tools/nip19';
 	import Message from '$lib/components/Message.svelte';
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
-	import { db, type MessageEvent, type ProfileInfo, type SystemEvent } from '$lib/db';
+	import { type SystemEvent } from '$lib/db';
+	import { CoolrState, CHAT_KIND } from '$lib/coolr-state.svelte';
 
-	let notificationSound = $state(true);
-	let showRelayModal = $state(false);
-	let relayInput = $state('');
-	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
+	const coolrState = new CoolrState();
 
-	let tabActive = $state(true);
-	let nostrPublicKey = $state('');
-	let profileMetadata = $state<Map<string, ProfileInfo>>(new Map());
-	let messages = $state<Map<string, (MessageEvent | SystemEvent)[]>>(new Map());
-	let channels = $state(['#_']);
-	let unreadChannels = $state([] as string[]);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
-	let audio: HTMLAudioElement;
-	let textareaEl: HTMLTextAreaElement | null = null;
+	// Html element bindings
+	let textareaEl: HTMLTextAreaElement;
+	let chatContainer: HTMLDivElement;
 
-	// Some other emojis people may use
-	const emoticonMap = new Map([
-		[':)', '🙂'],
-		[':-)', '🙂'],
-		[':(', '🙁'],
-		[':-(', '🙁'],
-		[':D', '😄'],
-		[':-D', '😄'],
-		[':P', '😛'],
-		[':-P', '😛'],
-		[';)', '😉'],
-		[':O', '😮'],
-		[':-O', '😮'],
-		[":'(", '😢'],
-		[':3', '😺'],
-		['XD', '😆'],
-		['B)', '😎'],
-		[':|', '😐'],
-		[':/', '😕'], // TODO: Pasting in url parses emoji
-		[':S', '😖'],
-		['>:(', '😠'],
-		['O:)', '😇'],
-		['<3', '❤️']
-	]);
-
-	// TODO: Adding an emoji from picker pastes in the text input if
-
-	let selectedChannel = $state('#_');
 	let showSidebar = $state(true);
 	let autoScroll = $state(true);
-
 	let input = $state('');
-	let chatContainer: HTMLDivElement;
+
+	// Modal related state
 	let showEmojiPicker = $state(false);
 	let showWelcomeModal = $state(false);
 	let showSettingsModal = $state(false);
-
-	const METADATA_RELAY_URL = 'wss://purplepag.es';
-	//const START_RELAY_URL = 'wss://nos.lol';
-	const CHAT_KIND = 23333; // kind for channel messages: TBD
-	let relayUrl = $state('');
-	let pool: SimplePool;
-
-	if (browser) {
-		document.addEventListener('visibilitychange', () => {
-			tabActive = document.visibilityState === 'visible';
-		});
-	}
-
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter' && !event.shiftKey) {
-			event.preventDefault();
-			sendMessage();
-		}
-	}
-
-	function autoResize() {
-		if (textareaEl) {
-			textareaEl.style.height = 'auto';
-			textareaEl.style.height = `${textareaEl.scrollHeight}px`;
-		}
-	}
+	let showRelayModal = $state(false);
+	let relayInput = $state('');
+	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
 
 	onMount(() => {
 		if (!browser) return;
@@ -99,26 +40,31 @@
 			showWelcomeModal = true;
 		}
 
-		const soundPref = localStorage.getItem('coolr-notification-sound');
-		if (soundPref !== null) {
-			notificationSound = soundPref === 'true';
+		coolrState.loadCache();
+
+		// Show welcome modal if needed
+		if (coolrState.relayUrl === '') {
+			showRelayModal = true;
 		}
 
-		loadCache();
+		// Select channel
+		const currentSelectedChannel = localStorage.getItem('selectedChannel');
+		if (currentSelectedChannel) {
+			coolrState.changeChannel(currentSelectedChannel);
+		}
 
-		pool = new SimplePool();
-		connectToRelay();
+		coolrState.connectToRelay();
+		coolrState.subscribeMetadata();
 
 		setTimeout(() => {
-			if ((messages.get(selectedChannel) ?? []).length > 0) {
+			if ((coolrState.messages.get(coolrState.selectedChannel) ?? []).length > 0) {
 				scrollToBottom();
-				subscribeMetadata();
 			}
 		}, 0); // Wait for DOM to update
 
 		// Used to handle selecting channels from hashtags
 		if (typeof window !== 'undefined') {
-			(window as any).changeChannel = changeChannel;
+			(window as any).changeChannel = coolrState.changeChannel;
 		}
 
 		setEmojiMap();
@@ -126,478 +72,48 @@
 
 	$effect(() => {
 		if (!browser) return;
-
-		if (tabActive) {
+		if (coolrState.tabActive) {
 			// If the tab is active and unread selected channel has unread messages, clear unread for channel
-			if (unreadChannels.includes(selectedChannel)) {
+			if (coolrState.unreadChannels.includes(coolrState.selectedChannel)) {
 				// use timeout to wait 1 second before clearing unread
 				setTimeout(() => {
-					unreadChannels = unreadChannels.filter((c) => c !== selectedChannel);
+					coolrState.unreadChannels = coolrState.unreadChannels.filter(
+						(c) => c !== coolrState.selectedChannel
+					);
 				}, 1000);
 			}
 		}
 
-		// const params = $page.url.searchParams;
-		// const newRelay = params.get('relay') || relayUrl;
-		// const newChannel = $page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+		coolrState.saveCache(); // TODO: Maybe debounce this or be more selective
 
-		// // if (newRelay !== relayUrl) {
-		// // 	relayUrl = newRelay;
-		// // 	pool.close([relayUrl]);
-		// // 	connectToRelay();
-		// // }
-
-		// if (newChannel !== selectedChannel) {
-		// 	changeChannel(newChannel);
-		// }
-
-		// // Only trigger if something changed
-		// if (newRelay !== relayUrl || newChannel !== selectedChannel) {
-		// 	//newRelay = newRelay;
-		// 	//selectedChannel = newChannel;
-		// 	console.log('Relay changed to:', newRelay);
-		// 	console.log('Channel changed to:', newChannel);
-		// 	//handleRelayChannelChange(relay, channel);
-		// }
-
-		saveCache(); // TODO: Maybe debounce this or be more selective
-
-		if (autoScroll && messages.size > 0) {
-			if ((messages.get(selectedChannel) ?? []).length > 0) {
+		if (autoScroll && coolrState.messages.size > 0) {
+			if ((coolrState.messages.get(coolrState.selectedChannel) ?? []).length > 0) {
 				scrollToBottom();
 			}
 		}
 
 		// If any unread channels set document title
-		if (unreadChannels.length > 0) {
-			document.title = `(${unreadChannels.length}) ${selectedChannel}`;
+		if (coolrState.unreadChannels.length > 0) {
+			document.title = `(${coolrState.unreadChannels.length}) ${coolrState.selectedChannel}`;
 		} else {
-			document.title = `${selectedChannel}`;
+			document.title = `${coolrState.selectedChannel}`;
 		}
 	});
-
-	function clearAllSiteData() {
-		if (
-			confirm(
-				'Are you sure you want to clear all site data? This will log you out and remove all cached messages, profiles, and settings.'
-			)
-		) {
-			localStorage.clear();
-			if (db) {
-				db.delete().then(() => {
-					location.reload();
-				});
-			} else {
-				location.reload();
-			}
-		}
-	}
 
 	function handlePath() {
 		if (!browser) return;
 		const params = page.url.searchParams;
-		const newRelay = params.get('relay') || relayUrl;
-		const newChannel = page.url.pathname.split('/').filter(Boolean)[0] || selectedChannel;
+		const newRelay = params.get('relay') || coolrState.relayUrl;
+		const newChannel =
+			page.url.pathname.split('/').filter(Boolean)[0] || coolrState.selectedChannel;
 		// if (newRelay !== relayUrl) {
 		// 	relayUrl = newRelay;
 		// 	pool.close([relayUrl]);
 		// 	connectToRelay();
 		// }
 
-		if (newChannel !== selectedChannel) {
-			changeChannel(newChannel);
-		}
-	}
-
-	function notify(title: string, body: string) {
-		if (Notification.permission === 'granted') {
-			new Notification(title, { body, icon: '/favicon-32x32.png' });
-		} else if (Notification.permission !== 'denied') {
-			Notification.requestPermission().then((perm) => {
-				if (perm === 'granted') {
-					new Notification(title, { body, icon: '/favicon-32x32.png' });
-				}
-			});
-		}
-	}
-
-	function loadCache() {
-		if (!browser) return;
-		const version = localStorage.getItem('version');
-		if (version !== '4') {
-			localStorage.clear();
-			localStorage.setItem('version', '4');
-		}
-
-		const storedRelayUrl = localStorage.getItem('relayUrl');
-		if (storedRelayUrl) {
-			relayUrl = storedRelayUrl;
-		} else {
-			// Show relay modal
-			//localStorage.setItem('relayUrl', START_RELAY_URL);
-			showRelayModal = true;
-		}
-
-		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
-		if (currentNostrPublicKey) {
-			nostrPublicKey = currentNostrPublicKey;
-		}
-
-		// Load cache from indexedDB into messages map
-		db.messages
-			.where('relayUrl')
-			.equals(relayUrl)
-			.toArray()
-			.then((events) => {
-				messages.clear();
-				events.sort((a, b) => a.created_at - b.created_at); // Sort by created_at
-				events.forEach((event) => {
-					const channel = event.channel || '';
-					const current = messages.get(channel) ?? [];
-					// TODO: Check for duplicates
-					messages.set(channel, [...current, event]);
-				});
-			})
-			.finally(() => {
-				messages = new Map(messages);
-			});
-
-		// Load profiles cache
-		db.profiles
-			.toArray()
-			.then((profiles) => {
-				profiles.forEach((profile) => {
-					profileMetadata.set(profile.pubkey, profile);
-				});
-			})
-			.finally(() => {
-				profileMetadata = new Map(profileMetadata);
-			});
-
-		// Load channels cache
-		db.channels
-			.where('relayUrl')
-			.equals(relayUrl)
-			.first()
-			.then((channelsData) => {
-				if (channelsData) {
-					channels = channelsData.channels;
-				} else {
-					channels = ['#_'];
-				}
-			});
-
-		// Load unread channels cache
-		db.unreadChannels
-			.where('relayUrl')
-			.equals(relayUrl)
-			.first()
-			.then((unreadChannelsData) => {
-				if (unreadChannelsData) {
-					unreadChannels = unreadChannelsData.channels;
-				} else {
-					unreadChannels = [];
-				}
-			});
-
-		const currentSelectedChannel = localStorage.getItem('selectedChannel');
-		if (currentSelectedChannel) {
-			selectChannel(currentSelectedChannel);
-		}
-	}
-
-	async function saveCache() {
-		if (!browser) return;
-
-		localStorage.setItem('relayUrl', relayUrl);
-
-		try {
-			const messagesArray = Array.from(messages.values()).flat();
-			await db.messages.bulkPut(messagesArray);
-		} catch (e) {
-			console.error('Error saving messages to indexedDB:', e);
-		}
-
-		try {
-			const profilesArray = Array.from(profileMetadata.values()); // TODO: Need .flat() here?
-			await db.profiles.bulkPut(profilesArray);
-		} catch (e) {
-			console.error('Error saving profiles to indexedDB:', e);
-		}
-
-		try {
-			await db.channels.put({
-				relayUrl: relayUrl,
-				channels: Array.from(channels.values())
-			});
-		} catch (e) {
-			console.error('Error saving channels to indexedDB:', e);
-		}
-
-		try {
-			await db.unreadChannels.put({
-				relayUrl: relayUrl,
-				channels: Array.from(unreadChannels.values())
-			});
-		} catch (e) {
-			console.error('Error saving unread channels to indexedDB:', e);
-		}
-
-		localStorage.setItem('selectedChannel', selectedChannel);
-		localStorage.setItem('nostrPublicKey', nostrPublicKey);
-	}
-
-	async function login() {
-		if (!browser) return;
-		if (window.nostr) {
-			try {
-				nostrPublicKey = await window.nostr.getPublicKey();
-				subscribeMetadata();
-				console.log('Logged in with Nostr public key:', nostrPublicKey);
-			} catch (error) {
-				console.error('Error logging in with Nostr:', error);
-			}
-		} else {
-			console.error('Nostr is not available');
-		}
-	}
-
-	async function verifyNip05(nip05: string, pubkey: string) {
-		if (!browser) return;
-		if (nip05.includes('bitcoinbarks.com')) {
-			// TODO: Temporary since CORS issue with bitcoinbarks.com
-			return;
-		}
-
-		try {
-			const domain = nip05.split('@')[1];
-			const response = await fetch(
-				`https://${domain}/.well-known/nostr.json?name=${nip05.split('@')[0]}`,
-				{
-					method: 'GET'
-					// headers: {
-					// 	'Content-Type': 'application/json'
-					// }
-				}
-			);
-			if (response.ok) {
-				const data = await response.json();
-				if (data.names) {
-					const name = nip05.split('@')[0];
-					const pubkeyFromName = data.names[name];
-					if (pubkeyFromName === pubkey) {
-						// Update metadata map
-						const current = profileMetadata.get(pubkey) ?? null;
-						if (current) {
-							current.verified = true;
-							profileMetadata.set(pubkey, { ...current });
-						}
-					}
-				}
-			}
-		} catch (error) {
-			console.log('Error verifying NIP-05:', error);
-		}
-	}
-
-	function connectToRelay() {
-		if (!browser) return;
-		if (!pool) return;
-		if (!relayUrl) return;
-		pool.subscribe(
-			[relayUrl],
-			{
-				kinds: [CHAT_KIND],
-				limit: 0
-			},
-			{
-				onevent(event: MessageEvent) {
-					event.created_at = Math.floor(Date.now() / 1000); // Doing this since event created_at not really reliable
-
-					const channelTag = event.tags.find((tag) => tag[0] === 'd');
-					if (validChannelName(channelTag?.[1] ?? '')) {
-						let channel = channelTag ? channelTag[1] : '';
-						channel = '#' + channel; // ensure it starts with a #
-
-						// MessageEvent
-						event.channel = channel;
-						event.relayUrl = relayUrl;
-
-						addMessageToChannel(channel, event);
-						subscribeMetadata();
-
-						// TEST
-						db.messages.add(event);
-
-						// Notify if message is not from current user
-						// Check content for nostr:nprofile...
-						const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
-						const nprofileMatch = event.content.match(nprofileRegex);
-
-						if (nprofileMatch) {
-							for (const match of nprofileMatch) {
-								const dec = decodeNostrURI(match);
-
-								if (!dec) continue;
-								if (dec.type !== 'nprofile') continue;
-								const pubkey = dec.data.pubkey;
-
-								if (pubkey === nostrPublicKey) {
-									const from =
-										profileMetadata.get(event.pubkey)?.name ||
-										npubEncode(event.pubkey).slice(0, 12);
-									// TODO: Replace nostr:nprofile with @name
-									notify(`${from} mentioned you in ${channel}`, `${event.content}`);
-									break;
-								}
-							}
-						}
-					}
-				},
-				onclose(reasons: string[]) {
-					console.log('Connection closed:', reasons);
-					// TODO: Not sure if this is best way to handle disconnects??
-					// Wish we had a close code to check for instead of string that could change
-					if (!reasons.includes('relay connection closed by us')) {
-						setTimeout(() => {
-							pool.destroy();
-							console.log('Reconnecting...');
-							connectToRelay();
-						}, 5000);
-					}
-				}
-			}
-		);
-	}
-
-	function subscribeMetadata() {
-		if (!browser) return;
-		if (!pool) return;
-
-		// get unique pubkeys from messages
-		const pubkeys = Array.from(messages.values())
-			.flat()
-			.filter((msg): msg is MessageEvent => 'pubkey' in msg)
-			.map((event) => event.pubkey)
-			.filter((value, index, self) => self.indexOf(value) === index);
-
-		// lets add current nostr pubkey to the list
-		if (nostrPublicKey && !pubkeys.includes(nostrPublicKey)) {
-			pubkeys.push(nostrPublicKey);
-		}
-
-		// check if new pubkeys are in metadata map
-		const newPubkeys = pubkeys.filter((pubkey) => !profileMetadata.has(pubkey));
-		if (newPubkeys.length === 0) return; // No new pubkeys to subscribe to
-
-		pool.subscribe(
-			[METADATA_RELAY_URL, relayUrl],
-			{
-				kinds: [0],
-				authors: pubkeys
-			},
-			{
-				id: 'metadata',
-				onevent(event: MessageEvent) {
-					const pubkey = event.pubkey;
-
-					let content: string;
-					try {
-						content = JSON.parse(event.content);
-					} catch (e) {
-						console.error('Error parsing metadata content:', e);
-						return;
-					}
-					if (!content) return;
-
-					const nip05 = (content as { nip05?: string }).nip05;
-					let profile: ProfileInfo = {
-						pubkey: pubkey,
-						verified: false,
-						name: (content as { name?: string }).name
-					};
-
-					if (nip05) {
-						profile.nip05 = nip05;
-						const current = profileMetadata.get(pubkey) ?? null;
-						if (current) {
-							profile.verified = current.verified;
-							profileMetadata.set(pubkey, { ...current, ...profile });
-						} else {
-							profileMetadata.set(pubkey, profile);
-						}
-
-						const newMap = new Map(profileMetadata);
-						profileMetadata = newMap;
-
-						// Check if nip05 is verified
-						if (!profile.verified) {
-							verifyNip05(nip05, pubkey);
-						}
-					}
-				}
-			}
-		);
-	}
-
-	function addMessageToChannel(channel: string, event: MessageEvent | SystemEvent) {
-		if (!channels.includes(channel)) {
-			channels = [...channels, channel];
-		}
-
-		const current = messages.get(channel) ?? [];
-		// if message is not in selected channel, add to unreadChannels
-		if (channel !== selectedChannel) {
-			if (!unreadChannels.includes(channel)) {
-				unreadChannels = [...unreadChannels, channel];
-				notifyWithSound();
-			}
-		} else if (channel === selectedChannel && !tabActive) {
-			if (!unreadChannels.includes(channel)) {
-				unreadChannels = [...unreadChannels, channel];
-				notifyWithSound();
-			}
-		}
-
-		if ('pubkey' in event) {
-			if (current.some((msg): msg is MessageEvent => 'id' in msg && msg.id === event.id)) {
-				return; // Ignore duplicate messages
-			}
-		}
-
-		const updated = [...current, event];
-
-		// Trim from the front if over limit
-		const MAX_MESSAGES = 500; // Maximum number of messages to keep per channel
-		const limited = updated.length > MAX_MESSAGES ? updated.slice(-MAX_MESSAGES) : updated;
-
-		// Trigger reactivity by replacing the Map
-		const newMap = new Map(messages);
-		newMap.set(channel, limited);
-		messages = newMap;
-	}
-
-	function changeChannel(channel: string) {
-		if (!browser) return;
-		if (channel === selectedChannel) return;
-
-		const cleanse = channel.replaceAll('#', '');
-
-		if (!validChannelName(cleanse)) {
-			alert('Invalid channel name. No special characters. And 24 characters max.');
-			return;
-		}
-
-		channel = '#' + cleanse;
-		selectChannel(channel);
-		// const params = new URLSearchParams();
-		// params.set('channel', channel);
-		// params.set('relay', relayUrl);
-		// window.history.replaceState({}, '', '?' + params.toString());
-
-		if (!channels.includes(channel)) {
-			channels = [...channels, channel];
-			selectChannel(channel);
+		if (newChannel !== coolrState.selectedChannel) {
+			coolrState.changeChannel(newChannel);
 		}
 	}
 
@@ -625,27 +141,10 @@
 
 		const channel = '#' + name;
 
-		if (!channels.includes(channel)) {
-			channels = [...channels, channel];
-			selectChannel(channel);
-		} else {
-			selectChannel(channel);
-		}
+		coolrState.changeChannel(channel);
 	}
 
-	function clearEmptyChannels() {
-		if (!browser) return;
-		const emptyChannels = channels.filter((channel) => {
-			const messagesInChannel = messages.get(channel);
-			return !messagesInChannel || messagesInChannel.length === 0;
-		});
-
-		if (emptyChannels.length > 0) {
-			channels = channels.filter((channel) => !emptyChannels.includes(channel));
-			messages = new Map([...messages].filter(([key]) => !emptyChannels.includes(key)));
-		}
-	}
-
+	// KEEP HERE
 	async function sendMessage() {
 		if (!input.trim()) return;
 		if (!window.nostr) return;
@@ -656,22 +155,22 @@
 			if (command === 'help') {
 				// simply add SystemMessage to the channel message map
 				const systemEvent: SystemEvent = {
-					channel: selectedChannel,
+					channel: coolrState.selectedChannel,
 					id: uuidv7(),
 					type: 'help',
 					content:
 						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel',
 					created_at: Math.floor(Date.now() / 1000)
 				};
-				addMessageToChannel(selectedChannel, systemEvent);
+				coolrState.addMessageToChannel(coolrState.selectedChannel, systemEvent);
 			} else if (command === 'csm') {
 				// clear system messages
 				// remove non Event messages from the channel
-				const current = messages.get(selectedChannel) ?? [];
+				const current = coolrState.messages.get(coolrState.selectedChannel) ?? [];
 				const filtered = current.filter((msg) => 'pubkey' in msg);
-				const newMap = new Map(messages);
-				newMap.set(selectedChannel, filtered);
-				messages = newMap;
+				const newMap = new Map(coolrState.messages);
+				newMap.set(coolrState.selectedChannel, filtered);
+				coolrState.messages = newMap;
 			} else if (command === 'join') {
 				if (input.split(' ').length != 2) {
 					alert('Command: /join <channel>');
@@ -685,7 +184,7 @@
 				}
 				addNewChannel(channel);
 			} else if (command === 'cec') {
-				clearEmptyChannels();
+				coolrState.clearEmptyChannels();
 			} else {
 				alert(`Unknown command: ${command}`);
 			}
@@ -727,7 +226,9 @@
 						cleanMention = mention.slice(1); // remove @
 					}
 
-					const profile = Array.from(profileMetadata.values()).find((p) => p.name === cleanMention);
+					const profile = Array.from(coolrState.profileMetadata.values()).find(
+						(p) => p.name === cleanMention
+					);
 
 					if (profile) {
 						input = input.replace(mention, `nostr:${nprofileEncode({ pubkey: profile.pubkey })}`);
@@ -740,12 +241,12 @@
 			pTags = pTags.filter((value, index, self) => self.indexOf(value) === index);
 
 			// remove "#" from selectedChannel
-			let channel = selectedChannel.replace('#', '');
+			let channel = coolrState.selectedChannel.replace('#', '');
 			let tag: string[][] = [];
 			if (channel !== '' && validChannelName(channel)) {
 				tag = [
 					['d', channel],
-					['relay', relayUrl]
+					['relay', coolrState.relayUrl]
 				];
 				if (pTags.length > 0) {
 					tag = [...tag, ...pTags];
@@ -759,7 +260,7 @@
 			};
 
 			window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-				await Promise.any(pool.publish([relayUrl], signedEvent));
+				await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
 			});
 		}
 
@@ -890,7 +391,7 @@
 				if (dec.type !== 'nprofile') continue;
 				const pubkey = dec.data.pubkey;
 
-				const profile = profileMetadata.get(pubkey);
+				const profile = coolrState.profileMetadata.get(pubkey);
 				if (!profile) continue;
 				const name = profile.name;
 				if (!name) continue;
@@ -912,7 +413,7 @@
 				if (!dec) continue;
 				if (dec.type !== 'npub') continue;
 				const pubkey = dec.data;
-				const profile = profileMetadata.get(pubkey);
+				const profile = coolrState.profileMetadata.get(pubkey);
 				if (!profile) continue;
 				const name = profile.name;
 				if (!name) continue;
@@ -957,11 +458,6 @@
 		showSidebar = !showSidebar;
 	}
 
-	function selectChannel(channel: string) {
-		selectedChannel = channel;
-		unreadChannels = unreadChannels.filter((c) => c !== channel);
-	}
-
 	function scrollToBottom() {
 		if (chatContainer) {
 			chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -976,30 +472,38 @@
 	}
 
 	function changeRelayUrl() {
-		if (relayInput !== '' && relayInput !== relayUrl) {
-			pool.destroy();
+		if (relayInput !== '' && relayInput !== coolrState.relayUrl) {
+			coolrState.pool.destroy();
 
 			setTimeout(() => {
-				relayUrl = relayInput;
+				coolrState.relayUrl = relayInput;
 				relayInput = '';
-				localStorage.setItem('relayUrl', relayUrl);
+				localStorage.setItem('relayUrl', coolrState.relayUrl);
 
-				loadCache();
-				selectedChannel = '#_';
+				coolrState.loadCache();
+				coolrState.selectedChannel = '#_';
 
-				connectToRelay();
+				coolrState.connectToRelay();
 			}, 300);
 		}
 	}
-	function notifyWithSound() {
-		if (!notificationSound) return;
-		audio.play().catch((err) => {
-			console.error('Playback failed:', err);
-		});
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			sendMessage();
+		}
+	}
+
+	function autoResize() {
+		if (textareaEl) {
+			textareaEl.style.height = 'auto';
+			textareaEl.style.height = `${textareaEl.scrollHeight}px`;
+		}
 	}
 </script>
 
-<audio bind:this={audio} src="notify.mp3" preload="auto"></audio>
+<audio bind:this={coolrState.audio} src="notify.mp3" preload="auto"></audio>
 
 {#if showSettingsModal}
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
@@ -1012,14 +516,17 @@
 						id="notif-sound"
 						type="checkbox"
 						class="h-5 w-5 accent-cyan-600"
-						bind:checked={notificationSound}
+						bind:checked={coolrState.notificationSound}
 						onchange={() =>
-							localStorage.setItem('coolr-notification-sound', String(notificationSound))}
+							localStorage.setItem(
+								'coolr-notification-sound',
+								String(coolrState.notificationSound)
+							)}
 					/>
 				</div>
 				<button
 					class="w-full rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-700"
-					onclick={clearAllSiteData}
+					onclick={coolrState.clearAllSiteData}
 				>
 					Clear All Site Data
 				</button>
@@ -1162,20 +669,20 @@
 				</button>
 			</div>
 			<div use:autoAnimate={{ duration: 100 }} class="flex-1 overflow-y-auto text-sm">
-				{#each channels as channel}
+				{#each coolrState.channels as channel}
 					<div
 						class="cursor-pointer px-2 py-1 hover:bg-cyan-700 hover:text-black {channel ===
-						selectedChannel
+						coolrState.selectedChannel
 							? 'bg-cyan-700 text-black'
 							: ''}"
-						onclick={() => selectChannel(channel)}
+						onclick={() => coolrState.changeChannel(channel)}
 					>
-						{#if unreadChannels.includes(channel)}
+						{#if coolrState.unreadChannels.includes(channel)}
 							<span class="font-black text-white">
 								{channel} <span class="float-end">●</span>
 							</span>
 						{:else}
-							<span class={channel === selectedChannel ? 'text-white' : 'text-gray-400'}>
+							<span class={channel === coolrState.selectedChannel ? 'text-white' : 'text-gray-400'}>
 								{channel}
 							</span>
 						{/if}
@@ -1197,21 +704,22 @@
 					&#9776; <!-- Hamburger Icon -->
 				</button>
 				<span>
-					<span class="text-cyan-100"> {selectedChannel} </span> |
+					<span class="text-cyan-100"> {coolrState.selectedChannel} </span> |
 					<span
 						class="cursor-pointer text-purple-300 hover:underline"
-						onclick={() => (showRelayModal = true)}>{relayUrl || 'Choose Relay'}</span
+						onclick={() => (showRelayModal = true)}>{coolrState.relayUrl || 'Choose Relay'}</span
 					>
-					{#if !nostrPublicKey}
+					{#if !coolrState.nostrPublicKey}
 						|
-						<button class="ml-1 text-red-500 hover:underline" onclick={login}>
+						<button class="ml-1 text-red-500 hover:underline" onclick={coolrState.login}>
 							(Login with Extension)
 						</button>
 					{:else}
 						|
 						<span class="text-cyan-300">
-							({npubEncode(nostrPublicKey).slice(0, 12)}) {profileMetadata.get(nostrPublicKey)
-								?.nip05}
+							({npubEncode(coolrState.nostrPublicKey).slice(0, 12)}) {coolrState.profileMetadata.get(
+								coolrState.nostrPublicKey
+							)?.nip05}
 						</span>
 					{/if}
 				</span>
@@ -1233,13 +741,13 @@
 			onscroll={handleScroll}
 		>
 			<!-- Display messages for the selected channel -->
-			{#if messages.has(selectedChannel)}
-				{#each messages.get(selectedChannel) ?? [] as event}
+			{#if coolrState.messages.has(coolrState.selectedChannel)}
+				{#each coolrState.messages.get(coolrState.selectedChannel) ?? [] as event}
 					{#if 'pubkey' in event}
 						<Message
-							{nostrPublicKey}
+							nostrPublicKey={coolrState.nostrPublicKey}
 							{event}
-							profileInfo={profileMetadata.get(event.pubkey)}
+							profileInfo={coolrState.profileMetadata.get(event.pubkey)}
 							{linkify}
 							{openPubkeyProfile}
 						/>

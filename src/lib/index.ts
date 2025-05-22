@@ -19,3 +19,27 @@ export function validChannelName(name: string): boolean {
 	if (name.length === 1 && name === '_') return true; // Allow single underscore for default channel
 	return regex.test(name);
 }
+
+export const emoticonMap = new Map([
+	[':)', '🙂'],
+	[':-)', '🙂'],
+	[':(', '🙁'],
+	[':-(', '🙁'],
+	[':D', '😄'],
+	[':-D', '😄'],
+	[':P', '😛'],
+	[':-P', '😛'],
+	[';)', '😉'],
+	[':O', '😮'],
+	[':-O', '😮'],
+	[":'(", '😢'],
+	[':3', '😺'],
+	['XD', '😆'],
+	['B)', '😎'],
+	[':|', '😐'],
+	[':/', '😕'], // TODO: Pasting in url parses emoji
+	[':S', '😖'],
+	['>:(', '😠'],
+	['O:)', '😇'],
+	['<3', '❤️']
+]);
