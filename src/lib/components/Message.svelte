@@ -16,12 +16,10 @@
 	const sanitize = (html: string) => {
 		const clean = DOMPurify.sanitize(html, {
 			ALLOWED_TAGS: ['a', 'span'],
-			ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
+			ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'title']
 		});
 
-		return clean === html
-			? clean
-			: '<span class="bg-amber-400 text-black">&lt;REMOVED CONTENT&gt;</span>';
+		return clean; // === html ? clean : clean; // '<span class="bg-amber-400 text-black">&lt;REMOVED CONTENT&gt;</span>';
 	};
 </script>
 
