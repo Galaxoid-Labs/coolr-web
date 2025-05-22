@@ -15,8 +15,8 @@
 
 	const sanitize = (html: string) => {
 		return DOMPurify.sanitize(html, {
-			ALLOWED_TAGS: ['a'],
-			ALLOWED_ATTR: ['href', 'target', 'rel']
+			ALLOWED_TAGS: ['a', 'span'],
+			ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
 		});
 	};
 </script>
