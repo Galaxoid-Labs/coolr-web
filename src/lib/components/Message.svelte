@@ -12,6 +12,13 @@
 		linkify: (text: string) => string;
 		openPubkeyProfile: (pubkey: string) => void;
 	}>();
+
+	const sanitize = (html: string) => {
+		return DOMPurify.sanitize(html, {
+			ALLOWED_TAGS: ['a'],
+			ALLOWED_ATTR: ['href', 'target', 'rel']
+		});
+	};
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -24,7 +31,9 @@
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-300 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				><strong>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt;</strong>
+				><strong
+					>&lt;{sanitize(profileInfo?.name || npubEncode(event.pubkey).slice(0, 12))}&gt;</strong
+				>
 				<span class="text-green-300">✓</span>
 			</span>
 		{:else}
@@ -32,14 +41,12 @@
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-300 opacity-30 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>&lt;<strong>{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}</strong>
+				>&lt;<strong>{sanitize(profileInfo?.name || npubEncode(event.pubkey).slice(0, 12))}</strong>
 				&gt;</span
 			>
 		{/if}
 
-		<span class="text-gray-100"
-			><strong>{@html DOMPurify.sanitize(linkify(event.content))}</strong></span
-		>
+		<span class="text-gray-100"><strong>{@html sanitize(linkify(event.content))}</strong></span>
 	{:else}
 		<span class="text-yellow-100 opacity-30">{formatDate(event.created_at)}</span>
 		{#if profileInfo && profileInfo.verified}
@@ -47,7 +54,7 @@
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-600 opacity-70 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt;
+				>&lt;{sanitize(profileInfo?.name || npubEncode(event.pubkey).slice(0, 12))}&gt;
 
 				<span class="text-green-300">✓</span>
 			</span>
@@ -56,10 +63,10 @@
 				title={profileInfo?.nip05 || event.pubkey}
 				class="cursor-pointer text-cyan-600 opacity-70 hover:underline"
 				onclick={() => openPubkeyProfile(event.pubkey)}
-				>&lt;{profileInfo?.name || npubEncode(event.pubkey).slice(0, 12)}&gt</span
+				>&lt;{sanitize(profileInfo?.name || npubEncode(event.pubkey).slice(0, 12))}&gt</span
 			>
 		{/if}
 
-		<span class="text-gray-400">{@html DOMPurify.sanitize(linkify(event.content))}</span>
+		<span class="text-gray-400">{@html sanitize(linkify(event.content))}</span>
 	{/if}
 </div>
