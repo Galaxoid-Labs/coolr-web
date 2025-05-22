@@ -1095,7 +1095,7 @@
 {/if}
 
 {#if showRelayModal && !showWelcomeModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+	<div class="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden bg-black/70">
 		<div class="w-full max-w-md rounded-lg border border-cyan-700 bg-gray-800 p-6 shadow-lg">
 			<h2 class="mb-4 text-lg font-bold text-cyan-200">Choose Relay</h2>
 			<input
@@ -1186,7 +1186,7 @@
 	{/if}
 
 	<!-- Chat Area -->
-	<div class="flex flex-1 flex-col break-words whitespace-pre-wrap">
+	<div class="flex flex-1 flex-col overflow-x-hidden break-words whitespace-pre-wrap">
 		<!-- Header -->
 		<div class="flex items-center justify-between border-b border-cyan-700 bg-gray-800 p-2 text-sm">
 			<div class="flex items-center gap-2">
