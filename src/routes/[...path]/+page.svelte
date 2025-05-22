@@ -712,7 +712,12 @@
 						coolrState.selectedChannel
 							? 'bg-cyan-700 text-black'
 							: ''}"
-						onclick={() => coolrState.changeChannel(channel)}
+						onclick={() => {
+							coolrState.changeChannel(channel);
+							setTimeout(() => {
+								scrollToBottom();
+							}, 0);
+						}}
 					>
 						{#if coolrState.unreadChannels.includes(channel)}
 							<span class="font-black text-white">
