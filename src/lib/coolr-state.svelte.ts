@@ -3,6 +3,8 @@ import { browser } from '$app/environment';
 import { SimplePool } from 'nostr-tools/pool';
 import { validChannelName } from '$lib';
 import { decodeNostrURI, npubEncode } from 'nostr-tools/nip19';
+import { replaceState } from '$app/navigation';
+import { page } from '$app/state';
 
 export const METADATA_RELAY_URL = 'wss://purplepag.es';
 export const CHAT_KIND = 23333; // kind for channel messages: TBD
@@ -461,5 +463,10 @@ export class CoolrState {
 
 		this.selectedChannel = channel;
 		this.unreadChannels = this.unreadChannels.filter((c) => c !== channel);
+
+		// update url params with relay and channel
+		const params = `relay=${this.relayUrl}&channel=${cleanse}`;
+		const newUrl = `${window.location.pathname}?${params}`;
+		replaceState(newUrl, '');
 	}
 }

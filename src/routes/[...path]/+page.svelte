@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
-	import { validChannelName, truncateMiddle, emoticonMap } from '$lib';
+
+	import { onMount, tick } from 'svelte';
+	import { validChannelName, truncateMiddle, emoticonMap, isValidWsUrl } from '$lib';
 	import { page } from '$app/state';
 	import { uuidv7 } from 'uuidv7';
 	import autoAnimate from '@formkit/auto-animate';
@@ -12,6 +13,7 @@
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 	import { type SystemEvent } from '$lib/db';
 	import { CoolrState, CHAT_KIND } from '$lib/coolr-state.svelte';
+	import { replaceState } from '$app/navigation';
 
 	const coolrState = new CoolrState();
 
@@ -32,6 +34,7 @@
 	let showRelayModal = $state(false);
 	let relayInput = $state('');
 	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
+	let changingUrl = false;
 
 	onMount(() => {
 		if (!browser) return;
@@ -50,7 +53,8 @@
 		// Select channel
 		const currentSelectedChannel = localStorage.getItem('selectedChannel');
 		if (currentSelectedChannel) {
-			coolrState.changeChannel(currentSelectedChannel);
+			//coolrState.changeChannel(currentSelectedChannel);
+			coolrState.selectedChannel = currentSelectedChannel;
 		}
 
 		coolrState.connectToRelay();
@@ -60,6 +64,7 @@
 			if ((coolrState.messages.get(coolrState.selectedChannel) ?? []).length > 0) {
 				scrollToBottom();
 			}
+			handlePath();
 		}, 0); // Wait for DOM to update
 
 		// Used to handle selecting channels from hashtags
@@ -98,22 +103,49 @@
 		} else {
 			document.title = `${coolrState.selectedChannel}`;
 		}
+
+		//handlePath();
 	});
 
 	function handlePath() {
 		if (!browser) return;
 		const params = page.url.searchParams;
-		const newRelay = params.get('relay') || coolrState.relayUrl;
-		const newChannel =
-			page.url.pathname.split('/').filter(Boolean)[0] || coolrState.selectedChannel;
-		// if (newRelay !== relayUrl) {
-		// 	relayUrl = newRelay;
-		// 	pool.close([relayUrl]);
-		// 	connectToRelay();
-		// }
+		const relay = params.get('relay');
+		let channel = params.get('channel');
 
-		if (newChannel !== coolrState.selectedChannel) {
-			coolrState.changeChannel(newChannel);
+		if (channel) {
+			channel = channel.replace('#', '');
+		}
+
+		const currentRelay = coolrState.relayUrl;
+		const currentChannel = coolrState.selectedChannel.replace('#', '');
+
+		// Do nothing if the relay and channel are the same
+		if (!channel || !validChannelName(channel)) return;
+		if (!relay || !isValidWsUrl(relay)) return;
+		if (!relay && !channel) return;
+		if (relay === currentRelay && channel === currentChannel) return;
+
+		if (relay !== currentRelay) {
+			coolrState.pool.destroy();
+
+			coolrState.relayUrl = relay!;
+			coolrState.saveCache();
+
+			coolrState.loadCache();
+
+			coolrState.connectToRelay();
+
+			if (channel !== currentChannel) {
+				coolrState.selectedChannel = '#' + channel;
+				setTimeout(() => {
+					coolrState.changeChannel(channel!);
+				}, 750);
+			}
+		} else if (channel !== currentChannel) {
+			setTimeout(() => {
+				coolrState.changeChannel(channel!);
+			}, 750);
 		}
 	}
 
@@ -140,6 +172,7 @@
 		}
 
 		const channel = '#' + name;
+		console.log('Adding channel', channel);
 
 		coolrState.changeChannel(channel);
 	}
@@ -446,7 +479,7 @@
 	}
 
 	function encodeShareLink(relay: string, channel: string, withBaseUrl: boolean): string {
-		const path = `${channel.replaceAll('#', '')}?relay=${relay}`;
+		const path = `?relay=${relay}&channel=${channel.replaceAll('#', '')}`;
 		if (!withBaseUrl) {
 			return `/${path}`;
 		}
@@ -472,6 +505,10 @@
 	}
 
 	function changeRelayUrl() {
+		if (!isValidWsUrl(relayInput)) {
+			alert('Invalid relay URL. Please enter a valid WebSocket URL.');
+			return;
+		}
 		if (relayInput !== '' && relayInput !== coolrState.relayUrl) {
 			coolrState.pool.destroy();
 
@@ -724,13 +761,33 @@
 					{/if}
 				</span>
 			</div>
-			<button
-				class="ml-2 text-cyan-400 hover:text-cyan-200"
-				title="Settings"
-				onclick={() => (showSettingsModal = true)}
-			>
-				⚙️
-			</button>
+			<div class="flex items-center gap-2">
+				<!-- Share Button -->
+				<button
+					class="text-cyan-400 hover:text-cyan-200"
+					title="Share Channel"
+					onclick={() => {
+						const shareUrl = encodeShareLink(coolrState.relayUrl, coolrState.selectedChannel, true);
+						navigator.clipboard
+							.writeText(shareUrl)
+							.then(() => {
+								alert('Share link copied to clipboard!\n' + shareUrl);
+							})
+							.catch(() => {
+								prompt('Copy this link:', shareUrl);
+							});
+					}}
+				>
+					🔗
+				</button>
+				<button
+					class="ml-2 text-cyan-400 hover:text-cyan-200"
+					title="Settings"
+					onclick={() => (showSettingsModal = true)}
+				>
+					⚙️
+				</button>
+			</div>
 		</div>
 
 		<!-- Chat Messages -->
