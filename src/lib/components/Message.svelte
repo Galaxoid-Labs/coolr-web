@@ -14,10 +14,14 @@
 	}>();
 
 	const sanitize = (html: string) => {
-		return DOMPurify.sanitize(html, {
+		const clean = DOMPurify.sanitize(html, {
 			ALLOWED_TAGS: ['a', 'span'],
 			ALLOWED_ATTR: ['href', 'target', 'rel', 'class']
 		});
+
+		return clean === html
+			? clean
+			: '<span class="bg-amber-400 text-black">&lt;REMOVED CONTENT&gt;</span>';
 	};
 </script>
 
