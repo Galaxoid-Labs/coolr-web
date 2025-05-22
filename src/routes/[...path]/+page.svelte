@@ -13,6 +13,7 @@
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 	import { db, type MessageEvent, type ProfileInfo, type SystemEvent } from '$lib/db';
 
+	let notificationSound = $state(true);
 	let showRelayModal = $state(false);
 	let relayInput = $state('');
 	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
@@ -25,6 +26,7 @@
 	let unreadChannels = $state([] as string[]);
 	let emojiMap = $state<Map<string, string[]>>(new Map());
 
+	let audio: HTMLAudioElement;
 	let textareaEl: HTMLTextAreaElement | null = null;
 
 	// Some other emojis people may use
@@ -95,6 +97,11 @@
 
 		if (!localStorage.getItem('coolr-welcome-shown')) {
 			showWelcomeModal = true;
+		}
+
+		const soundPref = localStorage.getItem('coolr-notification-sound');
+		if (soundPref !== null) {
+			notificationSound = soundPref === 'true';
 		}
 
 		loadCache();
@@ -543,10 +550,12 @@
 		if (channel !== selectedChannel) {
 			if (!unreadChannels.includes(channel)) {
 				unreadChannels = [...unreadChannels, channel];
+				notifyWithSound();
 			}
 		} else if (channel === selectedChannel && !tabActive) {
 			if (!unreadChannels.includes(channel)) {
 				unreadChannels = [...unreadChannels, channel];
+				notifyWithSound();
 			}
 		}
 
@@ -982,13 +991,32 @@
 			}, 300);
 		}
 	}
+	function notifyWithSound() {
+		if (!notificationSound) return;
+		audio.play().catch((err) => {
+			console.error('Playback failed:', err);
+		});
+	}
 </script>
+
+<audio bind:this={audio} src="notify.mp3" preload="auto"></audio>
 
 {#if showSettingsModal}
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
 		<div class="w-full max-w-sm rounded-lg border border-cyan-700 bg-gray-800 p-6 shadow-lg">
 			<h2 class="mb-4 text-lg font-bold text-cyan-200">Settings</h2>
-			<div class="mb-6">
+			<div class="mb-6 space-y-4">
+				<div class="flex items-center justify-between">
+					<label for="notif-sound" class="text-cyan-100">Notification Sound</label>
+					<input
+						id="notif-sound"
+						type="checkbox"
+						class="h-5 w-5 accent-cyan-600"
+						bind:checked={notificationSound}
+						onchange={() =>
+							localStorage.setItem('coolr-notification-sound', String(notificationSound))}
+					/>
+				</div>
 				<button
 					class="w-full rounded bg-red-600 px-4 py-2 font-bold text-white hover:bg-red-700"
 					onclick={clearAllSiteData}
