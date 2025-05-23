@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { validChannelName, truncateMiddle, emoticonMap, isValidWsUrl } from '$lib';
 	import { page } from '$app/state';
 	import { uuidv7 } from 'uuidv7';

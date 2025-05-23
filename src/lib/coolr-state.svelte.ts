@@ -4,7 +4,6 @@ import { SimplePool } from 'nostr-tools/pool';
 import { validChannelName } from '$lib';
 import { decodeNostrURI, npubEncode } from 'nostr-tools/nip19';
 import { replaceState } from '$app/navigation';
-import { page } from '$app/state';
 
 export const METADATA_RELAY_URL = 'wss://purplepag.es';
 export const CHAT_KIND = 23333; // kind for channel messages: TBD
