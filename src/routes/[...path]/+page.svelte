@@ -32,7 +32,7 @@
 	let showSettingsModal = $state(false);
 	let showRelayModal = $state(false);
 	let relayInput = $state('');
-	let relayList = $state(['wss://relay.damus.io', 'wss://nos.lol']);
+	let relayList = $state(['wss://relay.damus.io']);
 
 	onMount(() => {
 		if (!browser) return;
