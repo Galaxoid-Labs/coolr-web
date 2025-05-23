@@ -13,7 +13,6 @@
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 	import { type SystemEvent } from '$lib/db';
 	import { CoolrState, CHAT_KIND } from '$lib/coolr-state.svelte';
-	import { replaceState } from '$app/navigation';
 
 	const coolrState = new CoolrState();
 
@@ -192,7 +191,7 @@
 					id: uuidv7(),
 					type: 'help',
 					content:
-						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel',
+						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel\n\nYou can mention people with @username or `@user name with spaces` and they will be notified\n\nYou can also paste in bech32 encoded entites like nostr:npub, nostr:nprofile, nostr:naddr',
 					created_at: Math.floor(Date.now() / 1000)
 				};
 				coolrState.addMessageToChannel(coolrState.selectedChannel, systemEvent);
@@ -538,6 +537,10 @@
 			textareaEl.style.height = `${textareaEl.scrollHeight}px`;
 		}
 	}
+	function sendHelpCommand() {
+		input = '/help';
+		sendMessage();
+	}
 </script>
 
 <audio bind:this={coolrState.audio} src="notify.mp3" preload="auto"></audio>
@@ -608,6 +611,9 @@
 							target="_blank"
 							class="text-cyan-400 underline">GitHub</a
 						>
+					</li>
+					<li>
+						Use <span class="text-orange-300"><strong>/help</strong></span> for a list of commands.
 					</li>
 				</ul>
 				<p>
@@ -767,6 +773,13 @@
 				</span>
 			</div>
 			<div class="flex items-center gap-2">
+				<button
+					class="mr-2 text-cyan-400 hover:text-cyan-200"
+					title="Share Channel"
+					onclick={sendHelpCommand}
+				>
+					❓
+				</button>
 				<!-- Share Button -->
 				<button
 					class="text-cyan-400 hover:text-cyan-200"
