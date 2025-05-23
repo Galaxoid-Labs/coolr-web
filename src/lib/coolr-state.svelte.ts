@@ -34,7 +34,7 @@ export class CoolrState {
 		}
 	}
 
-	loadCache() {
+	loadCache = () => {
 		if (!browser) return;
 		const version = localStorage.getItem('version');
 		if (version !== '4') {
@@ -115,9 +115,9 @@ export class CoolrState {
 					this.unreadChannels = [];
 				}
 			});
-	}
+	};
 
-	async saveCache() {
+	saveCache = async () => {
 		if (!browser) return;
 
 		localStorage.setItem('relayUrl', this.relayUrl);
@@ -156,9 +156,9 @@ export class CoolrState {
 
 		localStorage.setItem('selectedChannel', this.selectedChannel);
 		localStorage.setItem('nostrPublicKey', this.nostrPublicKey);
-	}
+	};
 
-	clearAllSiteData() {
+	clearAllSiteData = () => {
 		if (
 			confirm(
 				'Are you sure you want to clear all site data? This will log you out and remove all cached messages, profiles, and settings.'
@@ -173,9 +173,9 @@ export class CoolrState {
 				location.reload();
 			}
 		}
-	}
+	};
 
-	async verifyNip05(nip05: string, pubkey: string) {
+	verifyNip05 = async (nip05: string, pubkey: string) => {
 		if (!browser) return;
 		if (nip05.includes('bitcoinbarks.com')) {
 			// TODO: Temporary since CORS issue with bitcoinbarks.com
@@ -211,9 +211,9 @@ export class CoolrState {
 		} catch (error) {
 			console.log('Error verifying NIP-05:', error);
 		}
-	}
+	};
 
-	async login() {
+	login = async () => {
 		if (!browser) return;
 		if (window.nostr) {
 			try {
@@ -226,9 +226,9 @@ export class CoolrState {
 		} else {
 			console.error('Nostr is not available');
 		}
-	}
+	};
 
-	connectToRelay() {
+	connectToRelay = () => {
 		if (!browser) return;
 		if (!this.pool) return;
 		if (!this.relayUrl) return;
@@ -299,9 +299,9 @@ export class CoolrState {
 				}
 			}
 		);
-	}
+	};
 
-	subscribeMetadata() {
+	subscribeMetadata = () => {
 		if (!browser) return;
 		if (!this.pool) return;
 
@@ -322,6 +322,7 @@ export class CoolrState {
 		// check if new pubkeys are in metadata map
 		const newPubkeys = pubkeys.filter((pubkey) => !this.profileMetadata.has(pubkey));
 		if (newPubkeys.length === 0) return; // No new pubkeys to subscribe to
+		console.log('here');
 
 		this.pool.subscribe(
 			[METADATA_RELAY_URL, this.relayUrl],
@@ -371,9 +372,9 @@ export class CoolrState {
 				}
 			}
 		);
-	}
+	};
 
-	addMessageToChannel(channel: string, event: MessageEvent | SystemEvent) {
+	addMessageToChannel = (channel: string, event: MessageEvent | SystemEvent) => {
 		if (!this.channels.includes(channel)) {
 			this.channels = [...this.channels, channel];
 		}
@@ -408,9 +409,9 @@ export class CoolrState {
 		const newMap = new Map(this.messages);
 		newMap.set(channel, limited);
 		this.messages = newMap;
-	}
+	};
 
-	notify(title: string, body: string) {
+	notify = (title: string, body: string) => {
 		if (Notification.permission === 'granted') {
 			new Notification(title, { body, icon: '/favicon-32x32.png' });
 		} else if (Notification.permission !== 'denied') {
@@ -420,18 +421,18 @@ export class CoolrState {
 				}
 			});
 		}
-	}
+	};
 
-	notifyWithSound() {
+	notifyWithSound = () => {
 		if (!this.notificationSound) return;
 		if (this.audio) {
 			this.audio.play().catch((err) => {
 				console.error('Playback failed:', err);
 			});
 		}
-	}
+	};
 
-	clearEmptyChannels() {
+	clearEmptyChannels = () => {
 		if (!browser) return;
 		const emptyChannels = this.channels.filter((channel) => {
 			const messagesInChannel = this.messages.get(channel);
@@ -442,9 +443,9 @@ export class CoolrState {
 			this.channels = this.channels.filter((channel) => !emptyChannels.includes(channel));
 			this.messages = new Map([...this.messages].filter(([key]) => !emptyChannels.includes(key)));
 		}
-	}
+	};
 
-	changeChannel(channel: string) {
+	changeChannel = (channel: string) => {
 		if (!browser) return;
 		if (channel === this.selectedChannel) return;
 
@@ -468,5 +469,5 @@ export class CoolrState {
 		const params = `relay=${this.relayUrl}&channel=${cleanse}`;
 		const newUrl = `${window.location.pathname}?${params}`;
 		replaceState(newUrl, '');
-	}
+	};
 }
