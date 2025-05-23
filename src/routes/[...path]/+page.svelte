@@ -34,14 +34,14 @@
 	let relayInput = $state('');
 	let relayList = $state(['wss://relay.damus.io']);
 
-	onMount(() => {
+	onMount(async () => {
 		if (!browser) return;
 
 		if (!localStorage.getItem('coolr-welcome-shown')) {
 			showWelcomeModal = true;
 		}
 
-		coolrState.loadCache();
+		await coolrState.loadCache();
 
 		// Show welcome modal if needed
 		if (coolrState.relayUrl === '') {
@@ -105,7 +105,7 @@
 		//handlePath();
 	});
 
-	function handlePath() {
+	async function handlePath() {
 		if (!browser) return;
 		const params = page.url.searchParams;
 		const relay = params.get('relay');
@@ -128,9 +128,9 @@
 			coolrState.pool.destroy();
 
 			coolrState.relayUrl = relay!;
-			coolrState.saveCache();
+			await coolrState.saveCache();
 
-			coolrState.loadCache();
+			await coolrState.loadCache();
 
 			coolrState.connectToRelay();
 
@@ -502,7 +502,7 @@
 		autoScroll = atBottom;
 	}
 
-	function changeRelayUrl() {
+	async function changeRelayUrl() {
 		if (!isValidWsUrl(relayInput)) {
 			alert('Invalid relay URL. Please enter a valid WebSocket URL.');
 			return;

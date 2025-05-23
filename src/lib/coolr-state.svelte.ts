@@ -33,7 +33,7 @@ export class CoolrState {
 		}
 	}
 
-	loadCache = () => {
+	loadCache = async () => {
 		if (!browser) return;
 		const version = localStorage.getItem('version');
 		if (version !== '4') {
@@ -49,8 +49,6 @@ export class CoolrState {
 		const storedRelayUrl = localStorage.getItem('relayUrl');
 		if (storedRelayUrl) {
 			this.relayUrl = storedRelayUrl;
-		} else {
-			//showRelayModal = true;
 		}
 
 		const currentNostrPublicKey = localStorage.getItem('nostrPublicKey');
@@ -59,61 +57,41 @@ export class CoolrState {
 		}
 
 		// Load cache from indexedDB into messages map
-		db.messages
-			.where('relayUrl')
-			.equals(this.relayUrl)
-			.toArray()
-			.then((events) => {
-				this.messages.clear();
-				events.sort((a, b) => a.created_at - b.created_at); // Sort by created_at
-				events.forEach((event) => {
-					const channel = event.channel || '';
-					const current = this.messages.get(channel) ?? [];
-					// TODO: Check for duplicates
-					this.messages.set(channel, [...current, event]);
-				});
-			})
-			.finally(() => {
-				this.messages = new Map(this.messages);
-			});
+		const events = await db.messages.where('relayUrl').equals(this.relayUrl).toArray();
+		this.messages.clear();
+		events.sort((a, b) => a.created_at - b.created_at);
+		events.forEach((event) => {
+			const channel = event.channel || '';
+			const current = this.messages.get(channel) ?? [];
+			this.messages.set(channel, [...current, event]);
+		});
+		this.messages = new Map(this.messages);
 
 		// Load profiles cache
-		db.profiles
-			.toArray()
-			.then((profiles) => {
-				profiles.forEach((profile) => {
-					this.profileMetadata.set(profile.pubkey, profile);
-				});
-			})
-			.finally(() => {
-				this.profileMetadata = new Map(this.profileMetadata);
-			});
+		const profiles = await db.profiles.toArray();
+		profiles.forEach((profile) => {
+			this.profileMetadata.set(profile.pubkey, profile);
+		});
+		this.profileMetadata = new Map(this.profileMetadata);
 
 		// Load channels cache
-		db.channels
-			.where('relayUrl')
-			.equals(this.relayUrl)
-			.first()
-			.then((channelsData) => {
-				if (channelsData) {
-					this.channels = channelsData.channels;
-				} else {
-					this.channels = ['#_'];
-				}
-			});
+		const channelsData = await db.channels.where('relayUrl').equals(this.relayUrl).first();
+		if (channelsData) {
+			this.channels = channelsData.channels;
+		} else {
+			this.channels = ['#_'];
+		}
 
 		// Load unread channels cache
-		db.unreadChannels
+		const unreadChannelsData = await db.unreadChannels
 			.where('relayUrl')
 			.equals(this.relayUrl)
-			.first()
-			.then((unreadChannelsData) => {
-				if (unreadChannelsData) {
-					this.unreadChannels = unreadChannelsData.channels;
-				} else {
-					this.unreadChannels = [];
-				}
-			});
+			.first();
+		if (unreadChannelsData) {
+			this.unreadChannels = unreadChannelsData.channels;
+		} else {
+			this.unreadChannels = [];
+		}
 	};
 
 	saveCache = async () => {
@@ -257,7 +235,7 @@ export class CoolrState {
 						self.subscribeMetadata();
 
 						// TEST
-						db.messages.add(event);
+						//db.messages.add(event);
 
 						// Notify if message is not from current user
 						// Check content for nostr:nprofile...
@@ -318,10 +296,7 @@ export class CoolrState {
 			pubkeys.push(this.nostrPublicKey);
 		}
 
-		// check if new pubkeys are in metadata map
-		const newPubkeys = pubkeys.filter((pubkey) => !this.profileMetadata.has(pubkey));
-		if (newPubkeys.length === 0) return; // No new pubkeys to subscribe to
-		console.log('here');
+		if (pubkeys.length === 0) return; // No new pubkeys to subscribe to
 
 		this.pool.subscribe(
 			[METADATA_RELAY_URL, this.relayUrl],
@@ -367,6 +342,17 @@ export class CoolrState {
 						if (!profile.verified) {
 							self.verifyNip05(nip05, pubkey);
 						}
+					} else {
+						const current = self.profileMetadata.get(pubkey) ?? null;
+						if (current) {
+							profile.verified = current.verified;
+							self.profileMetadata.set(pubkey, { ...current, ...profile });
+						} else {
+							self.profileMetadata.set(pubkey, profile);
+						}
+
+						const newMap = new Map(self.profileMetadata);
+						self.profileMetadata = newMap;
 					}
 				}
 			}
