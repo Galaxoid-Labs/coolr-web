@@ -270,7 +270,7 @@ export class CoolrState {
 
 					} else if (event.kind === BITCHAT_KIND) {
 
-						console.log('Received BITCHAT event:', event);
+						//console.log('Received BITCHAT event:', event);
 						const channelTag = event.tags.find((tag) => tag[0] === 'g');
 						const nickTag = event.tags.find((tag) => tag[0] === 'n');
 
