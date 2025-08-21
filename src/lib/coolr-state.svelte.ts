@@ -288,15 +288,18 @@ export class CoolrState {
 
 							self.addMessageToChannel(channel, event);
 							//self.subscribeMetadata();
-							let profile: ProfileInfo = {
-								pubkey: event.pubkey,
-								verified: false,
-								name: nickTag[1] + "#" + event.pubkey.slice(-4)
-							};
 
-							self.profileMetadata.set(event.pubkey, profile);
-							const newMap = new Map(self.profileMetadata);
-							self.profileMetadata = newMap;
+							if (event.pubkey !== self.nostrPublicKey) {
+								let profile: ProfileInfo = {
+									pubkey: event.pubkey,
+									verified: false,
+									name: nickTag[1] + "#" + event.pubkey.slice(-4)
+								};
+
+								self.profileMetadata.set(event.pubkey, profile);
+								const newMap = new Map(self.profileMetadata);
+								self.profileMetadata = newMap;
+							}
 
 						}
 
