@@ -282,11 +282,11 @@
 
 			if (coolrState.selectedChannel.startsWith("#bc_")) {
 
-				let nick = coolrState.nostrPublicKey;
+				let nick =  "cc_" + coolrState.nostrPublicKey.slice(-4);
 				const currentUser = coolrState.profileMetadata.get(coolrState.nostrPublicKey);
 
 				if (currentUser !== undefined) {
-					nick = currentUser.name ?? "cc_" + nick.slice(-4);
+					nick = currentUser.name ?? nick;
 				}
 				// remove "#bc_" from selectedChannel
 				let channel = coolrState.selectedChannel.replace('#bc_', '');
