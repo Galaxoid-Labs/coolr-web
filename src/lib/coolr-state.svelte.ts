@@ -287,7 +287,7 @@ export class CoolrState {
 							event.relayUrl = self.relayUrl;
 
 							self.addMessageToChannel(channel, event);
-							//self.subscribeMetadata();
+							self.subscribeMetadata();
 
 							if (event.pubkey !== self.nostrPublicKey) {
 								let profile: ProfileInfo = {
@@ -334,7 +334,7 @@ export class CoolrState {
 		const pubkeys = Array.from(this.messages.values())
 			.flat()
 			.filter((msg): msg is MessageEvent => 'pubkey' in msg)
-			.filter((msg): msg is MessageEvent => msg.kind !== BITCHAT_KIND) // We dont care about getting metadata for bitchat users
+			//.filter((msg): msg is MessageEvent => msg.kind !== BITCHAT_KIND) // We dont care about getting metadata for bitchat users
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
 
@@ -346,7 +346,7 @@ export class CoolrState {
 		if (pubkeys.length === 0) return; // No new pubkeys to subscribe to
 
 		this.pool.subscribe(
-			[METADATA_RELAY_URL, this.relayUrl],
+			[METADATA_RELAY_URL, this.relayUrl, "wss://relay.primal.net"],
 			{
 				kinds: [0],
 				authors: pubkeys
