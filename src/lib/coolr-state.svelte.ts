@@ -7,6 +7,7 @@ import { replaceState } from '$app/navigation';
 
 export const METADATA_RELAY_URL = 'wss://purplepag.es';
 export const CHAT_KIND = 23333; // kind for channel messages: TBD
+export const BITCHAT_KIND = 20000; // kind for bitchain messages
 
 export class CoolrState {
 	nostrPublicKey = $state('');
@@ -17,6 +18,9 @@ export class CoolrState {
 	selectedChannel = $state('#_');
 
 	relayUrl = $state('');
+
+	// bitchat nick
+	//bitchatNick = $state('');
 
 	tabActive = $state(true);
 	notificationSound = $state(true);
@@ -215,52 +219,89 @@ export class CoolrState {
 		this.pool.subscribe(
 			[this.relayUrl],
 			{
-				kinds: [CHAT_KIND],
+				kinds: [CHAT_KIND, BITCHAT_KIND],
 				limit: 0
 			},
 			{
 				onevent(event: MessageEvent) {
 					event.created_at = Math.floor(Date.now() / 1000); // Doing this since event created_at not really reliable
 
-					const channelTag = event.tags.find((tag) => tag[0] === 'd');
-					if (validChannelName(channelTag?.[1] ?? '')) {
-						let channel = channelTag ? channelTag[1] : '';
-						channel = '#' + channel; // ensure it starts with a #
+					if (event.kind === CHAT_KIND) {
+						
+						const channelTag = event.tags.find((tag) => tag[0] === 'd');
+						if (validChannelName(channelTag?.[1] ?? '')) {
+							let channel = channelTag ? channelTag[1] : '';
+							channel = '#' + channel; // ensure it starts with a #
 
-						// MessageEvent
-						event.channel = channel;
-						event.relayUrl = self.relayUrl;
+							// MessageEvent
+							event.channel = channel;
+							event.relayUrl = self.relayUrl;
 
-						self.addMessageToChannel(channel, event);
-						self.subscribeMetadata();
+							self.addMessageToChannel(channel, event);
+							self.subscribeMetadata();
 
-						// TEST
-						//db.messages.add(event);
+							// TEST
+							//db.messages.add(event);
 
-						// Notify if message is not from current user
-						// Check content for nostr:nprofile...
-						const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
-						const nprofileMatch = event.content.match(nprofileRegex);
+							// Notify if message is not from current user
+							// Check content for nostr:nprofile...
+							const nprofileRegex = /\b(?:nostr:)?nprofile1[02-9ac-hj-np-z]+/g;
+							const nprofileMatch = event.content.match(nprofileRegex);
 
-						if (nprofileMatch) {
-							for (const match of nprofileMatch) {
-								const dec = decodeNostrURI(match);
+							if (nprofileMatch) {
+								for (const match of nprofileMatch) {
+									const dec = decodeNostrURI(match);
 
-								if (!dec) continue;
-								if (dec.type !== 'nprofile') continue;
-								const pubkey = dec.data.pubkey;
+									if (!dec) continue;
+									if (dec.type !== 'nprofile') continue;
+									const pubkey = dec.data.pubkey;
 
-								if (pubkey === self.nostrPublicKey) {
-									const from =
-										self.profileMetadata.get(event.pubkey)?.name ||
-										npubEncode(event.pubkey).slice(0, 12);
-									// TODO: Replace nostr:nprofile with @name
-									self.notify(`${from} mentioned you in ${channel}`, `${event.content}`);
-									break;
+									if (pubkey === self.nostrPublicKey) {
+										const from =
+											self.profileMetadata.get(event.pubkey)?.name ||
+											npubEncode(event.pubkey).slice(0, 12);
+										// TODO: Replace nostr:nprofile with @name
+										self.notify(`${from} mentioned you in ${channel}`, `${event.content}`);
+										break;
+									}
 								}
 							}
 						}
+
+					} else if (event.kind === BITCHAT_KIND) {
+
+						console.log('Received BITCHAT event:', event);
+						const channelTag = event.tags.find((tag) => tag[0] === 'g');
+						const nickTag = event.tags.find((tag) => tag[0] === 'n');
+
+						if (channelTag === undefined || nickTag === undefined) {
+							return;
+						}
+					
+						if (validChannelName(channelTag?.[1] ?? '')) {
+							let channel = channelTag ? channelTag[1] : '';
+							channel = '#bc_' + channel; // ensure it starts with a #
+
+							// MessageEvent
+							event.channel = channel;
+							event.relayUrl = self.relayUrl;
+
+							self.addMessageToChannel(channel, event);
+							//self.subscribeMetadata();
+							let profile: ProfileInfo = {
+								pubkey: event.pubkey,
+								verified: false,
+								name: nickTag[1] + "#" + event.pubkey.slice(-4)
+							};
+
+							self.profileMetadata.set(event.pubkey, profile);
+							const newMap = new Map(self.profileMetadata);
+							self.profileMetadata = newMap;
+
+						}
+
 					}
+
 				},
 				onclose(reasons: string[]) {
 					console.log('Connection closed:', reasons);
@@ -285,9 +326,12 @@ export class CoolrState {
 		const self = this;
 
 		// get unique pubkeys from messages
+		// Filter out bitchat messages since they will not likely have any metadata
+		// We will create 
 		const pubkeys = Array.from(this.messages.values())
 			.flat()
 			.filter((msg): msg is MessageEvent => 'pubkey' in msg)
+			.filter((msg): msg is MessageEvent => msg.kind !== BITCHAT_KIND) // We dont care about getting metadata for bitchat users
 			.map((event) => event.pubkey)
 			.filter((value, index, self) => self.indexOf(value) === index);
 

@@ -12,7 +12,7 @@
 	import Message from '$lib/components/Message.svelte';
 	import SystemMessage from '$lib/components/SystemMessage.svelte';
 	import { type SystemEvent } from '$lib/db';
-	import { CoolrState, CHAT_KIND } from '$lib/coolr-state.svelte';
+	import { CoolrState, CHAT_KIND, BITCHAT_KIND } from '$lib/coolr-state.svelte';
 
 	const coolrState = new CoolrState();
 
@@ -190,7 +190,7 @@
 					id: uuidv7(),
 					type: 'help',
 					content:
-						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel\n\nYou can mention people with @username or `@user name with spaces` and they will be notified\n\nYou can also paste in bech32 encoded entites like nostr:npub, nostr:nprofile, nostr:naddr',
+						'/help\n\nCommands:\n\n/help - Show this help message\n/csm - Clear system messages\n/cec - Clear empty channels\n/join <channel> - Join or create a channel\n/geo - If you are in a bitchat channel, this will open the corresponding geohash page\n\n\n\nYou can mention people with @username or `@user name with spaces` and they will be notified\n\nYou can also paste in bech32 encoded entites like nostr:npub, nostr:nprofile, nostr:naddr',
 					created_at: Math.floor(Date.now() / 1000)
 				};
 				coolrState.addMessageToChannel(coolrState.selectedChannel, systemEvent);
@@ -216,6 +216,15 @@
 				addNewChannel(channel);
 			} else if (command === 'cec') {
 				coolrState.clearEmptyChannels();
+			} else if (command === 'geo') {
+				if (coolrState.selectedChannel.startsWith("#bc_")) {
+					// grab everything after _ and open new tab
+					// here https://geohash.softeng.co/<geohash>
+					const geohash = coolrState.selectedChannel.split('_')[1];
+					if (geohash) {
+						window.open(`https://geohash.softeng.co/${geohash}`, '_blank');
+					}
+				}
 			} else {
 				alert(`Unknown command: ${command}`);
 			}
@@ -271,28 +280,64 @@
 			// filtre out duplicate ptags
 			pTags = pTags.filter((value, index, self) => self.indexOf(value) === index);
 
-			// remove "#" from selectedChannel
-			let channel = coolrState.selectedChannel.replace('#', '');
-			let tag: string[][] = [];
-			if (channel !== '' && validChannelName(channel)) {
-				tag = [
-					['d', channel],
-					['relay', coolrState.relayUrl]
-				];
-				if (pTags.length > 0) {
-					tag = [...tag, ...pTags];
-				}
-			}
-			const event: EventTemplate = {
-				kind: CHAT_KIND,
-				tags: tag,
-				content: input,
-				created_at: Math.floor(Date.now() / 1000)
-			};
+			if (coolrState.selectedChannel.startsWith("#bc_")) {
 
-			window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-				await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
-			});
+				let nick = coolrState.nostrPublicKey;
+				const currentUser = coolrState.profileMetadata.get(coolrState.nostrPublicKey);
+
+				if (currentUser !== undefined) {
+					nick = currentUser.name ?? "cc_" + nick.slice(-4);
+				}
+				// remove "#bc_" from selectedChannel
+				let channel = coolrState.selectedChannel.replace('#bc_', '');
+				let tag: string[][] = [];
+				if (channel !== '' && validChannelName(channel)) {
+					tag = [
+						['g', channel],
+						['n', nick],
+						['t', "teleport"],
+						['relay', coolrState.relayUrl]
+					];
+					if (pTags.length > 0) {
+						tag = [...tag, ...pTags];
+					}
+				}
+				const event: EventTemplate = {
+					kind: BITCHAT_KIND,
+					tags: tag,
+					content: input,
+					created_at: Math.floor(Date.now() / 1000)
+				};
+
+				window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
+					await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
+				});
+
+			} else {
+				// remove "#" from selectedChannel
+				let channel = coolrState.selectedChannel.replace('#', '');
+				let tag: string[][] = [];
+				if (channel !== '' && validChannelName(channel)) {
+					tag = [
+						['d', channel],
+						['relay', coolrState.relayUrl]
+					];
+					if (pTags.length > 0) {
+						tag = [...tag, ...pTags];
+					}
+				}
+				const event: EventTemplate = {
+					kind: CHAT_KIND,
+					tags: tag,
+					content: input,
+					created_at: Math.floor(Date.now() / 1000)
+				};
+
+				window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
+					await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
+				});
+			}
+
 		}
 
 		input = '';
@@ -599,6 +644,11 @@
 					<li>
 						Join or create public channels using hashtags (e.g. <span class="text-orange-300"
 							>#general</span
+						>).
+					</li>
+					<li>
+						NEW!! Chat with bitchat users via geohash channels (e.g. <span class="text-orange-300"
+							>#bc_9q8yy</span
 						>).
 					</li>
 					<li>
