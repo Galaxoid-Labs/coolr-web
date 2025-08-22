@@ -217,7 +217,7 @@ export class CoolrState {
 		const self = this;
 
 		this.pool.subscribe(
-			[this.relayUrl],
+			[this.relayUrl, "wss://relay.primal.net", "wss://nos.lol", "wss://offchain.pub", "wss://nostr21.com"],
 			{
 				kinds: [CHAT_KIND, BITCHAT_KIND],
 				limit: 0
