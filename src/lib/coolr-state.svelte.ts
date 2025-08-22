@@ -434,7 +434,7 @@ export class CoolrState {
 		const updated = [...current, event];
 
 		// Trim from the front if over limit
-		const MAX_MESSAGES = 500; // Maximum number of messages to keep per channel
+		const MAX_MESSAGES = 250; // Maximum number of messages to keep per channel
 		const limited = updated.length > MAX_MESSAGES ? updated.slice(-MAX_MESSAGES) : updated;
 
 		// Trigger reactivity by replacing the Map
