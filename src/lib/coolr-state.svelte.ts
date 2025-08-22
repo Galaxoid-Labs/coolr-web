@@ -386,9 +386,9 @@ export class CoolrState {
 						self.profileMetadata = newMap;
 
 						// Check if nip05 is verified
-						if (!profile.verified) {
-							self.verifyNip05(nip05, pubkey);
-						}
+						// if (!profile.verified) {
+						// 	self.verifyNip05(nip05, pubkey);
+						// }
 					} else {
 						const current = self.profileMetadata.get(pubkey) ?? null;
 						if (current) {
