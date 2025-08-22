@@ -310,7 +310,7 @@
 				};
 
 				window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-					await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
+					await Promise.any(coolrState.pool.publish([coolrState.relayUrl, "wss://relay.primal.net", "wss://nos.lol", "wss://offchain.pub", "wss://nostr21.com"], signedEvent));
 				});
 
 			} else {
@@ -334,7 +334,7 @@
 				};
 
 				window.nostr?.signEvent(event).then(async (signedEvent: Event) => {
-					await Promise.any(coolrState.pool.publish([coolrState.relayUrl, "wss://relay.primal.net", "wss://nos.lol", "wss://offchain.pub", "wss://nostr21.com"], signedEvent));
+					await Promise.any(coolrState.pool.publish([coolrState.relayUrl], signedEvent));
 				});
 			}
 
